@@ -161,7 +161,8 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Public registration is intentionally disabled: SMARTSIS accounts are
+        // provisioned by the Super Admin via user management (see README).
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

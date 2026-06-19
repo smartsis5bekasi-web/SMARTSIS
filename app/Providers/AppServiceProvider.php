@@ -2,9 +2,12 @@
 
 namespace App\Providers;
 
+use App\Enums\UserRole;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -24,6 +27,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureAuthorization();
+    }
+
+    /**
+     * Grant the Super Admin role unrestricted access via a gate bypass.
+     */
+    protected function configureAuthorization(): void
+    {
+        Gate::before(function (User $user): ?bool {
+            return $user->hasRole(UserRole::SuperAdmin->value) ? true : null;
+        });
     }
 
     /**
