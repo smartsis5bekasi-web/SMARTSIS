@@ -6,34 +6,58 @@
 @source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
 @source '../../vendor/livewire/flux/stubs/**/*.blade.php';
 
+/* Keep `dark:` class-based. SMARTSIS never adds `.dark` to <html>, so any
+   leftover `dark:` utilities stay inert instead of following the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
-    --color-zinc-50: #fafafa;
-    --color-zinc-100: #f5f5f5;
-    --color-zinc-200: #e5e5e5;
-    --color-zinc-300: #d4d4d4;
-    --color-zinc-400: #a3a3a3;
-    --color-zinc-500: #737373;
-    --color-zinc-600: #525252;
-    --color-zinc-700: #404040;
-    --color-zinc-800: #262626;
-    --color-zinc-900: #171717;
-    --color-zinc-950: #0a0a0a;
+    /* Brand primary — violet drawn from the SMARTSIS logo (#441daa). */
+    ----color-primary: #441dad;
+    --color-primary-50: #f4f1fd;
+    --color-primary-100: #e9e2fb;
+    --color-primary-200: #d4c6f6;
+    --color-primary-300: #b69eef;
+    --color-primary-400: #9670e4;
+    --color-primary-500: #6f43d4;
+    --color-primary-600: #441daa;
+    --color-primary-700: #3a1890;
+    --color-primary-800: #2f1573;
+    --color-primary-900: #28135e;
+    --color-primary-950: #190a3d;
 
-    --color-accent: var(--color-neutral-800);
-    --color-accent-content: var(--color-neutral-800);
+    /* Brand secondary — golden yellow from the "SMAN 5 Bekasi" wordmark. */
+    --color-secondary-50: #fffbeb;
+    --color-secondary-100: #fef3c7;
+    --color-secondary-200: #fde68a;
+    --color-secondary-300: #fcd34d;
+    --color-secondary-400: #fbbf24;
+    --color-secondary-500: #f5a800;
+    --color-secondary-600: #d98e00;
+    --color-secondary-700: #b36d00;
+    --color-secondary-800: #925700;
+    --color-secondary-900: #784800;
+    --color-secondary-950: #452800;
+
+    /* Re-map Flux's hard-coded base color (zinc) to a violet-tinted neutral so
+       the whole UI stays cohesive with the brand. */
+    --color-zinc-50: #fafafb;
+    --color-zinc-100: #f4f3f6;
+    --color-zinc-200: #e8e6ee;
+    --color-zinc-300: #d6d3df;
+    --color-zinc-400: #a5a1b3;
+    --color-zinc-500: #767189;
+    --color-zinc-600: #565167;
+    --color-zinc-700: #423e52;
+    --color-zinc-800: #2a2735;
+    --color-zinc-900: #1b1925;
+    --color-zinc-950: #110f18;
+
+    /* Flux accent maps to the brand violet. */
+    --color-accent: var(--color-primary-600);
+    --color-accent-content: var(--color-primary-700);
     --color-accent-foreground: var(--color-white);
-}
-
-@layer theme {
-    .dark {
-        --color-accent: var(--color-white);
-        --color-accent-content: var(--color-white);
-        --color-accent-foreground: var(--color-neutral-800);
-    }
 }
 
 @layer base {
@@ -45,6 +69,15 @@
     ::file-selector-button {
         border-color: var(--color-gray-200, currentColor);
     }
+}
+
+/* Active sidebar/nav item: solid brand violet with white text instead of the
+   default white pill. Unlayered so it wins over Flux's `data-current` utilities. */
+[data-flux-sidebar-item][data-current],
+[data-flux-navbar-item][data-current] {
+    background-color: var(--color-primary-600);
+    border-color: var(--color-primary-600);
+    color: var(--color-white);
 }
 
 [data-flux-field]:not(ui-radio, ui-checkbox) {
@@ -59,6 +92,27 @@ input:focus[data-flux-control],
 textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
     @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+}
+
+/* SlimSelect overrides (library loaded globally in partials/head.blade.php). */
+.ss-main {
+    width: 100%;
+    padding: 10px 12px;
+}
+.ss-main .ss-values .ss-value {
+    padding: 8px;
+}
+.ss-main .ss-values .ss-value .ss-value-text {
+    font-size: 16px;
+    line-height: 1;
+}
+.ss-main .ss-values .ss-value .ss-value-delete {
+    height: 16px;
+    width: 12px;
+}
+.ss-main .ss-values .ss-value .ss-value-delete svg {
+    height: 12px;
+    width: 12px;
 }
 
 /* \[:where(&)\]:size-4 {

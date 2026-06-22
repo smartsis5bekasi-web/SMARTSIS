@@ -53,13 +53,14 @@ Aplikasi ditransformasi/dibangun di atas stack berikut:
 | **Template Engine** | Blade | Server-side rendering |
 | **Interaktivitas** | Livewire | Komponen interaktif tanpa SPA penuh |
 | **JS Ringan** | AlpineJS | Interaksi UI ringan (toggle, dropdown, dsb.) |
-| **Styling/UI** | Bootstrap (responsif) | *Opsional: Tailwind bila tim sudah terbiasa* |
+| **Styling/UI** | TailwindCSS (responsif) | *Opsional: Laravel Tempalate Starter Kit* |
 | **Database** | MySQL | Penyimpanan utama |
 | **Face Recognition** | Face-api.js (browser-based) | Registrasi, verifikasi, pencocokan wajah |
 | **Liveness** | Blink Detection (Face-api.js) | Anti-spoofing menggunakan foto |
-| **RBAC** | Spatie Laravel-Permission | 9 role + permission granular |
+| **RBAC** | Spatie Laravel-Permission | 9 role + permission granular | 
 | **PDF** | barryvdh/laravel-dompdf (atau setara) | Cetak surat peringatan & laporan |
 | **Export Excel** | maatwebsite/excel | Import/export data |
+| **Slim Select For Multi Selection** | SlimSelect = new SlimSelect({}) | for selecting and searching list also multiple select if needed |
  
 > **Catatan migrasi:** KAK menyebut Laravel 12 sebagai baseline; PRD ini menargetkan **Laravel 13** sesuai stack tim. Hindari paket yang belum kompatibel dengan Laravel 13 — verifikasi setiap dependency.
  
@@ -318,3 +319,21 @@ Tablet/Smartphone Android atau laptop berkamera. Minimum: kamera HD, RAM 4 GB, C
  
 ## 11. Catatan Perubahan Ruang Lingkup
 Perubahan ruang lingkup setelah pengembangan berjalan dikategorikan pekerjaan tambahan dan dituangkan dalam **Change Request / addendum** yang disepakati kedua pihak (penyesuaian waktu/biaya bila perlu).
+
+## Login Access
+
+┌───────────────────┬─────────────────────────────────┬──────────┐
+│       Role        │              Email              │ Password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Kepala Sekolah    │ kepala_sekolah@smartsis.test    │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Wakasek Kesiswaan │ wakasek_kesiswaan@smartsis.test │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru BK           │ guru_bk@smartsis.test           │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Wali Kelas        │ wali_kelas@smartsis.test        │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru Piket        │ guru_piket@smartsis.test        │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru Mapel        │ guru_mapel@smartsis.test        │ password │
+└───────────────────┴─────────────────────────────────┴──────────┘

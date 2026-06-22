@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -88,6 +89,25 @@ class User extends Authenticatable implements PasskeyUser
     public function isActive(): bool
     {
         return $this->is_active;
+    }
+
+    /**
+     * The user's highest-priority role, used to pick which dashboard to render.
+     *
+     * Priority follows the declaration order of {@see UserRole} (Super Admin
+     * first). Returns null when the account holds none of the known roles.
+     */
+    public function primaryRole(): ?UserRole
+    {
+        $assigned = $this->getRoleNames()->all();
+
+        foreach (UserRole::cases() as $role) {
+            if (in_array($role->value, $assigned, true)) {
+                return $role;
+            }
+        }
+
+        return null;
     }
 
     /**
