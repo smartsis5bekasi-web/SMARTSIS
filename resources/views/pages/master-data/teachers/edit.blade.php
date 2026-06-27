@@ -2,7 +2,6 @@
 
 use App\Enums\UserRole;
 use App\Models\Teacher;
-use Flux\Flux;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
@@ -86,24 +85,22 @@ new #[Title('Edit Guru')] class extends Component {
             $this->teacher->update(['name' => $data['name'], 'nip' => $data['nip'], 'phone' => $data['phone']]);
         });
 
-        Flux::toast(variant: 'success', text: __('Data guru diperbarui.'));
+        session()->flash('swal', ['icon' => 'success', 'title' => __('Data guru diperbarui.')]);
 
         $this->redirectRoute('master-data.teachers', navigate: true);
     }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
-            <flux:heading size="xl">{{ __('Edit Guru') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Perbarui data guru beserta akun login.') }}</flux:text>
-        </div>
-        <flux:button variant="ghost" icon="arrow-left" href="{{ route('master-data.teachers') }}" wire:navigate>
-            {{ __('Kembali') }}
-        </flux:button>
-    </div>
+    <x-ui.page-header :title="__('Edit Guru')" :subtitle="__('Perbarui data guru beserta akun login.')">
+        <x-slot:actions>
+            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.teachers')" wire:navigate>
+                {{ __('Kembali') }}
+            </x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
 
-    <form wire:submit="save">
+    <form wire:submit="save" class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama Lengkap') }} <span class="text-red-500">*</span></label>
@@ -166,10 +163,10 @@ new #[Title('Edit Guru')] class extends Component {
         </div>
 
         <div class="flex justify-end gap-2">
-            <flux:button variant="filled" href="{{ route('master-data.teachers') }}" wire:navigate>
+            <x-ui.button variant="secondary" :href="route('master-data.teachers')" wire:navigate>
                 {{ __('Batal') }}
-            </flux:button>
-            <flux:button variant="primary" type="submit">{{ __('Simpan') }}</flux:button>
+            </x-ui.button>
+            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

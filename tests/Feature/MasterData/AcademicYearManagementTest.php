@@ -11,14 +11,13 @@ beforeEach(function () {
 });
 
 test('an academic year can be created', function () {
-    Livewire::test('pages::master-data.academic-years')
-        ->call('create')
+    Livewire::test('pages::master-data.academic-years.create')
         ->set('name', '2026/2027')
         ->set('started_on', '2026-07-01')
         ->set('ended_on', '2027-06-30')
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('showModal', false);
+        ->assertRedirect(route('master-data.academic-years'));
 
     $this->assertDatabaseHas('academic_years', ['name' => '2026/2027']);
 });
@@ -26,12 +25,12 @@ test('an academic year can be created', function () {
 test('the name is required and must be unique', function () {
     AcademicYear::factory()->create(['name' => '2025/2026']);
 
-    Livewire::test('pages::master-data.academic-years')
+    Livewire::test('pages::master-data.academic-years.create')
         ->set('name', '')
         ->call('save')
         ->assertHasErrors(['name' => 'required']);
 
-    Livewire::test('pages::master-data.academic-years')
+    Livewire::test('pages::master-data.academic-years.create')
         ->set('name', '2025/2026')
         ->call('save')
         ->assertHasErrors(['name' => 'unique']);
@@ -40,12 +39,12 @@ test('the name is required and must be unique', function () {
 test('an academic year can be edited', function () {
     $year = AcademicYear::factory()->create(['name' => 'Lama']);
 
-    Livewire::test('pages::master-data.academic-years')
-        ->call('edit', $year->id)
+    Livewire::test('pages::master-data.academic-years.edit', ['year' => $year])
         ->assertSet('name', 'Lama')
         ->set('name', 'Baru')
         ->call('save')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertRedirect(route('master-data.academic-years'));
 
     expect($year->refresh()->name)->toBe('Baru');
 });

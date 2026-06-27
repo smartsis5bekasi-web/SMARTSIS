@@ -11,12 +11,12 @@ beforeEach(function () {
 });
 
 test('a major can be created', function () {
-    Livewire::test('pages::master-data.majors')
+    Livewire::test('pages::master-data.majors.create')
         ->set('name', 'Ilmu Pengetahuan Alam')
         ->set('code', 'IPA')
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('showModal', false);
+        ->assertRedirect(route('master-data.majors'));
 
     $this->assertDatabaseHas('majors', ['name' => 'Ilmu Pengetahuan Alam', 'code' => 'IPA']);
 });
@@ -24,7 +24,7 @@ test('a major can be created', function () {
 test('the major name must be unique', function () {
     Major::factory()->create(['name' => 'IPA']);
 
-    Livewire::test('pages::master-data.majors')
+    Livewire::test('pages::master-data.majors.create')
         ->set('name', 'IPA')
         ->call('save')
         ->assertHasErrors(['name' => 'unique']);

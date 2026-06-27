@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Major;
-use Flux\Flux;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -28,24 +27,22 @@ new #[Title('Tambah Jurusan')] class extends Component {
 
         Major::create($data);
 
-        Flux::toast(variant: 'success', text: __('Jurusan ditambahkan.'));
+        session()->flash('swal', ['icon' => 'success', 'title' => __('Jurusan ditambahkan.')]);
 
         $this->redirectRoute('master-data.majors', navigate: true);
     }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
-            <flux:heading size="xl">{{ __('Tambah Jurusan') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Isi detail jurusan baru.') }}</flux:text>
-        </div>
-        <flux:button variant="ghost" icon="arrow-left" href="{{ route('master-data.majors') }}" wire:navigate>
-            {{ __('Kembali') }}
-        </flux:button>
-    </div>
+    <x-ui.page-header :title="__('Tambah Jurusan')" :subtitle="__('Isi detail jurusan baru.')">
+        <x-slot:actions>
+            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.majors')" wire:navigate>
+                {{ __('Kembali') }}
+            </x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
 
-    <form wire:submit="save">
+    <form wire:submit="save" class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama') }} <span class="text-red-500">*</span></label>
@@ -67,10 +64,10 @@ new #[Title('Tambah Jurusan')] class extends Component {
         </div>
 
         <div class="flex justify-end gap-2">
-            <flux:button variant="filled" href="{{ route('master-data.majors') }}" wire:navigate>
+            <x-ui.button variant="secondary" :href="route('master-data.majors')" wire:navigate>
                 {{ __('Batal') }}
-            </flux:button>
-            <flux:button variant="primary" type="submit">{{ __('Simpan') }}</flux:button>
+            </x-ui.button>
+            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

@@ -18,14 +18,14 @@ test('a classroom can be created with its relations', function () {
     $major = Major::factory()->create();
     $teacher = Teacher::factory()->create();
 
-    Livewire::test('pages::master-data.classrooms')
+    Livewire::test('pages::master-data.classrooms.create')
         ->set('name', 'XI IPA 1')
         ->set('academic_year_id', $year->id)
         ->set('major_id', $major->id)
         ->set('homeroom_teacher_id', $teacher->id)
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('showModal', false);
+        ->assertRedirect(route('master-data.classrooms'));
 
     $this->assertDatabaseHas('classrooms', [
         'name' => 'XI IPA 1',
@@ -36,7 +36,7 @@ test('a classroom can be created with its relations', function () {
 });
 
 test('the academic year is required', function () {
-    Livewire::test('pages::master-data.classrooms')
+    Livewire::test('pages::master-data.classrooms.create')
         ->set('name', 'XI IPA 1')
         ->set('academic_year_id', null)
         ->call('save')
@@ -47,7 +47,7 @@ test('the name must be unique within the same academic year', function () {
     $year = AcademicYear::factory()->create();
     Classroom::factory()->create(['name' => 'XI IPA 1', 'academic_year_id' => $year->id]);
 
-    Livewire::test('pages::master-data.classrooms')
+    Livewire::test('pages::master-data.classrooms.create')
         ->set('name', 'XI IPA 1')
         ->set('academic_year_id', $year->id)
         ->call('save')
@@ -59,7 +59,7 @@ test('the same name is allowed in a different academic year', function () {
     $yearB = AcademicYear::factory()->create();
     Classroom::factory()->create(['name' => 'XI IPA 1', 'academic_year_id' => $yearA->id]);
 
-    Livewire::test('pages::master-data.classrooms')
+    Livewire::test('pages::master-data.classrooms.create')
         ->set('name', 'XI IPA 1')
         ->set('academic_year_id', $yearB->id)
         ->call('save')

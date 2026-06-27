@@ -25,7 +25,7 @@
 <script nomodule src="https://cdn.jsdelivr.net/npm/ionicons@7/dist/ionicons/ionicons.js"></script>
 
 {{-- TinyMCE (rich-text editors; per-page tinymce.init lives in each component). --}}
-<script src="https://cdn.tiny.cloud/1/mgnx3lcm1bg1v85bmqfw3ogmz9vjtdxolbcs3pmx800uia9e/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+{{-- <script src="https://cdn.tiny.cloud/1/mgnx3lcm1bg1v85bmqfw3ogmz9vjtdxolbcs3pmx800uia9e/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script> --}}
 
 {{-- SweetAlert2 (delete confirms + status alerts; see LIBRARY.md). --}}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

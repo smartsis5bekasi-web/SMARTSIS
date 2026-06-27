@@ -14,7 +14,7 @@ beforeEach(function () {
 });
 
 test('creating a guru provisions a user, role, and teacher profile', function () {
-    Livewire::test('pages::master-data.teachers')
+    Livewire::test('pages::master-data.teachers.create')
         ->set('name', 'Pak Budi')
         ->set('nip', '198001012005011001')
         ->set('phone', '08123456789')
@@ -23,7 +23,7 @@ test('creating a guru provisions a user, role, and teacher profile', function ()
         ->set('password', 'rahasia123')
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('showModal', false);
+        ->assertRedirect(route('master-data.teachers'));
 
     $user = User::where('email', 'budi@smartsis.test')->first();
 
@@ -39,7 +39,7 @@ test('creating a guru provisions a user, role, and teacher profile', function ()
 });
 
 test('email and password are required when creating', function () {
-    Livewire::test('pages::master-data.teachers')
+    Livewire::test('pages::master-data.teachers.create')
         ->set('name', 'Pak Budi')
         ->set('role', UserRole::GuruMapel->value)
         ->call('save')
@@ -47,7 +47,7 @@ test('email and password are required when creating', function () {
 });
 
 test('the role must be a valid teacher role', function () {
-    Livewire::test('pages::master-data.teachers')
+    Livewire::test('pages::master-data.teachers.create')
         ->set('name', 'Pak Budi')
         ->set('email', 'budi@smartsis.test')
         ->set('password', 'rahasia123')
@@ -59,7 +59,7 @@ test('the role must be a valid teacher role', function () {
 test('the email must be unique across users', function () {
     User::factory()->create(['email' => 'taken@smartsis.test']);
 
-    Livewire::test('pages::master-data.teachers')
+    Livewire::test('pages::master-data.teachers.create')
         ->set('name', 'Pak Budi')
         ->set('email', 'taken@smartsis.test')
         ->set('password', 'rahasia123')
@@ -74,14 +74,14 @@ test('editing updates the teacher and reassigns the role without forcing a new p
     $originalHash = $user->password;
     $teacher = Teacher::factory()->create(['user_id' => $user->id, 'name' => 'Lama']);
 
-    Livewire::test('pages::master-data.teachers')
-        ->call('edit', $teacher->id)
+    Livewire::test('pages::master-data.teachers.edit', ['teacher' => $teacher])
         ->assertSet('name', 'Lama')
         ->assertSet('role', UserRole::GuruMapel->value)
         ->set('name', 'Baru')
         ->set('role', UserRole::WaliKelas->value)
         ->call('save')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertRedirect(route('master-data.teachers'));
 
     $user->refresh();
     expect($teacher->refresh()->name)->toBe('Baru')
@@ -96,8 +96,7 @@ test('providing a password on edit changes it', function () {
     $user->assignRole(UserRole::GuruMapel->value);
     $teacher = Teacher::factory()->create(['user_id' => $user->id]);
 
-    Livewire::test('pages::master-data.teachers')
-        ->call('edit', $teacher->id)
+    Livewire::test('pages::master-data.teachers.edit', ['teacher' => $teacher])
         ->set('password', 'passwordbaru')
         ->call('save')
         ->assertHasNoErrors();

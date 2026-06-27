@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Teacher;
-use Flux\Flux;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -31,55 +30,66 @@ new #[Title('Guru')] class extends Component {
         $teacher->user?->delete();
         $teacher->delete();
 
-        Flux::toast(variant: 'success', text: __('Guru dihapus.'));
+        $this->dispatch('swal', icon: 'success', title: __('Guru dihapus.'));
     }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
-            <flux:heading size="xl">{{ __('Guru') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Kelola data guru beserta akun & peran login.') }}</flux:text>
+    <x-ui.page-header :title="__('Guru')" :subtitle="__('Kelola data guru beserta akun & peran login.')">
+        <x-slot:actions>
+            <x-ui.button variant="primary" icon="add-outline" :href="route('master-data.teachers.create')" wire:navigate>
+                {{ __('Tambah') }}
+            </x-ui.button>
+        </x-slot:actions>
+    </x-ui.page-header>
+
+    <div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="min-w-full border-collapse text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 text-left text-gray-500">
+                        <th class="px-4 py-3 font-medium">{{ __('Nama') }}</th>
+                        <th class="px-4 py-3 font-medium">NIP</th>
+                        <th class="px-4 py-3 font-medium">{{ __('Email') }}</th>
+                        <th class="px-4 py-3 font-medium">{{ __('Peran') }}</th>
+                        <th class="px-4 py-3 font-medium">{{ __('Telepon') }}</th>
+                        <th class="px-4 py-3 text-right font-medium">{{ __('Aksi') }}</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 text-gray-700">
+                    @forelse ($this->teachers as $teacher)
+                        <tr wire:key="{{ $teacher->id }}" class="hover:bg-gray-50">
+                            <td class="px-4 py-3 font-medium text-gray-900">{{ $teacher->name }}</td>
+                            <td class="px-4 py-3">{{ $teacher->nip ?? '—' }}</td>
+                            <td class="px-4 py-3">{{ $teacher->user?->email ?? '—' }}</td>
+                            <td class="px-4 py-3">
+                                @if ($teacher->user?->primaryRole())
+                                    <span class="inline-flex rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-700">
+                                        {{ $teacher->user->primaryRole()->label() }}
+                                    </span>
+                                @else
+                                    —
+                                @endif
+                            </td>
+                            <td class="px-4 py-3">{{ $teacher->phone ?? '—' }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-3">
+                                    <a href="{{ route('master-data.teachers.edit', $teacher) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Edit') }}">
+                                        <ion-icon name="create-outline" class="text-xl"></ion-icon>
+                                    </a>
+                                    <x-ui.delete-button :wire-id="$teacher->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data guru.') }}</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
-        <flux:button variant="primary" icon="plus" href="{{ route('master-data.teachers.create') }}" wire:navigate>{{ __('Tambah') }}</flux:button>
+
+        <div class="mt-4">{{ $this->teachers->links() }}</div>
     </div>
-
-    <flux:table :paginate="$this->teachers">
-        <flux:table.columns>
-            <flux:table.column>{{ __('Nama') }}</flux:table.column>
-            <flux:table.column>NIP</flux:table.column>
-            <flux:table.column>{{ __('Email') }}</flux:table.column>
-            <flux:table.column>{{ __('Peran') }}</flux:table.column>
-            <flux:table.column>{{ __('Telepon') }}</flux:table.column>
-            <flux:table.column />
-        </flux:table.columns>
-        <flux:table.rows>
-            @forelse ($this->teachers as $teacher)
-                <flux:table.row :key="$teacher->id">
-                    <flux:table.cell variant="strong">{{ $teacher->name }}</flux:table.cell>
-                    <flux:table.cell>{{ $teacher->nip ?? '—' }}</flux:table.cell>
-                    <flux:table.cell>{{ $teacher->user?->email ?? '—' }}</flux:table.cell>
-                    <flux:table.cell>
-                        @if ($teacher->user?->primaryRole())
-                            <flux:badge size="sm" color="violet">{{ $teacher->user->primaryRole()->label() }}</flux:badge>
-                        @else
-                            —
-                        @endif
-                    </flux:table.cell>
-                    <flux:table.cell>{{ $teacher->phone ?? '—' }}</flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex justify-end gap-1">
-                            <flux:button size="xs" variant="ghost" icon="pencil-square" href="{{ route('master-data.teachers.edit', $teacher) }}" wire:navigate />
-                            <flux:button size="xs" variant="ghost" icon="trash" wire:click="delete({{ $teacher->id }})" wire:confirm="{{ __('Hapus guru ini? Akun login terkait juga akan dihapus.') }}" />
-                        </div>
-                    </flux:table.cell>
-                </flux:table.row>
-            @empty
-                <flux:table.row>
-                    <flux:table.cell colspan="6">{{ __('Belum ada data guru.') }}</flux:table.cell>
-                </flux:table.row>
-            @endforelse
-        </flux:table.rows>
-    </flux:table>
-
 </div>

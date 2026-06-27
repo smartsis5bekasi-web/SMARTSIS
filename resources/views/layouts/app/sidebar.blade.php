@@ -11,28 +11,35 @@
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
-                <flux:sidebar.group :heading="__('Platform')" class="grid">
-                    <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
+                <nav class="flex flex-col gap-6 px-2">
+                    <div class="flex flex-col gap-1">
+                        <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Platform') }}</p>
+                        <x-ui.sidebar-item icon="grid-outline" :href="route('dashboard')" :active="request()->routeIs('dashboard')">
+                            {{ __('Dashboard') }}
+                        </x-ui.sidebar-item>
+                    </div>
 
-                @can(\App\Enums\Permission::ManageMasterData->value)
-                    <flux:sidebar.group :heading="__('Master Data')" class="grid">
-                        <flux:sidebar.item icon="calendar-days" :href="route('master-data.academic-years')" :current="request()->routeIs('master-data.academic-years')" wire:navigate>
-                            {{ __('Tahun Ajaran') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="academic-cap" :href="route('master-data.majors')" :current="request()->routeIs('master-data.majors')" wire:navigate>
-                            {{ __('Jurusan') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="building-library" :href="route('master-data.classrooms')" :current="request()->routeIs('master-data.classrooms')" wire:navigate>
-                            {{ __('Kelas') }}
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="users" :href="route('master-data.teachers')" :current="request()->routeIs('master-data.teachers')" wire:navigate>
-                            {{ __('Guru') }}
-                        </flux:sidebar.item>
-                    </flux:sidebar.group>
-                @endcan
+                    @can(\App\Enums\Permission::ManageMasterData->value)
+                        <div class="flex flex-col gap-1">
+                            <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Master Data') }}</p>
+                            <x-ui.sidebar-item icon="calendar-outline" :href="route('master-data.academic-years')" :active="request()->routeIs('master-data.academic-years*')">
+                                {{ __('Tahun Ajaran') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="school-outline" :href="route('master-data.majors')" :active="request()->routeIs('master-data.majors*')">
+                                {{ __('Jurusan') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="business-outline" :href="route('master-data.classrooms')" :active="request()->routeIs('master-data.classrooms*')">
+                                {{ __('Kelas') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
+                                {{ __('Guru') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="person-outline" :href="route('master-data.students.index')" :active="request()->routeIs('master-data.students*')">
+                                {{ __('Siswa') }}
+                            </x-ui.sidebar-item>
+                        </div>
+                    @endcan
+                </nav>
             </flux:sidebar.nav>
         </flux:sidebar>
 
@@ -99,6 +106,22 @@
                 <flux:toast />
             </flux:toast.group>
         @endpersist
+
+        {{-- Bridge a redirect's session flash to a SweetAlert toast (see UI_STANDARDS.md). --}}
+        @if (session()->has('swal'))
+            <script>
+                (function () {
+                    var fire = function () {
+                        window.dispatchEvent(new CustomEvent('swal', { detail: @json(session('swal')) }));
+                    };
+                    if (window.Swal) {
+                        fire();
+                    } else {
+                        window.addEventListener('load', fire, { once: true });
+                    }
+                })();
+            </script>
+        @endif
 
         @fluxScripts
     </body>

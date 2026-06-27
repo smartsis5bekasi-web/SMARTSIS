@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -14,8 +15,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property string $nis
  * @property string|null $nisn
  * @property string $name
+ * @property string|null $avatar_url
  * @property string|null $gender
+ * @property Carbon|null $birth_date
+ * @property string|null $address
  * @property int|null $classroom_id
+ * @property int|null $teacher_id
  * @property int|null $major_id
  * @property int|null $year_in
  * @property int $current_point
@@ -30,8 +35,12 @@ class Student extends Model
         'nis',
         'nisn',
         'name',
+        'avatar_url',
         'gender',
+        'birth_date',
+        'address',
         'classroom_id',
+        'teacher_id',
         'major_id',
         'year_in',
         'current_point',
@@ -51,6 +60,14 @@ class Student extends Model
     public function classroom(): BelongsTo
     {
         return $this->belongsTo(Classroom::class);
+    }
+
+    /**
+     * @return BelongsTo<Teacher, $this>
+     */
+    public function teacher(): BelongsTo
+    {
+        return $this->belongsTo(Teacher::class);
     }
 
     /**
@@ -79,6 +96,7 @@ class Student extends Model
     protected function casts(): array
     {
         return [
+            'birth_date' => 'date',
             'current_point' => 'integer',
             'year_in' => 'integer',
         ];

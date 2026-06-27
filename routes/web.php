@@ -3,7 +3,7 @@
 use App\Enums\Permission;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('home');
+Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
@@ -24,6 +24,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::livewire('guru', 'pages::master-data.teachers')->name('teachers');
             Route::livewire('guru/tambah', 'pages::master-data.teachers.create')->name('teachers.create');
             Route::livewire('guru/{teacher}/edit', 'pages::master-data.teachers.edit')->name('teachers.edit');
+            Route::livewire('siswa', 'pages::master-data.students.index')->name('students.index');
+            Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
+            Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
         });
 });
 
