@@ -31,21 +31,21 @@
 @if ($href)
     <a href="{{ $href }}" {{ $attributes->merge(['class' => $classes]) }}>
         @if ($icon)
-            <ion-icon name="{{ $icon }}" class="text-lg"></ion-icon>
+            <span wire:ignore class="inline-flex"><ion-icon name="{{ $icon }}" class="text-lg"></ion-icon></span>
         @endif
         {{ $slot }}
         @if ($iconTrailing)
-            <ion-icon name="{{ $iconTrailing }}" class="text-lg"></ion-icon>
+            <span wire:ignore class="inline-flex"><ion-icon name="{{ $iconTrailing }}" class="text-lg"></ion-icon></span>
         @endif
     </a>
 @else
     <button {{ $attributes->merge(['type' => 'button', 'class' => $classes]) }}>
         @if ($icon)
-            <ion-icon name="{{ $icon }}" class="text-lg"></ion-icon>
+            <span wire:ignore class="inline-flex"><ion-icon name="{{ $icon }}" class="text-lg"></ion-icon></span>
         @endif
         {{ $slot }}
         @if ($iconTrailing)
-            <ion-icon name="{{ $iconTrailing }}" class="text-lg"></ion-icon>
+            <span wire:ignore class="inline-flex"><ion-icon name="{{ $iconTrailing }}" class="text-lg"></ion-icon></span>
         @endif
     </button>
 @endif

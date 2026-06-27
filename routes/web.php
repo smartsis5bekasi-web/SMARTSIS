@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Permission;
+use App\Enums\UserRole;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -27,6 +28,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::livewire('siswa', 'pages::master-data.students.index')->name('students.index');
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
+        });
+
+    Route::middleware('role:'.UserRole::WaliKelas->value)
+        ->prefix('wali-kelas')
+        ->name('wali-kelas.')
+        ->group(function () {
+            Route::livewire('siswa', 'pages::wali-kelas.students.index')->name('students.index');
+            Route::livewire('siswa/tambah', 'pages::wali-kelas.students.create')->name('students.create');
+            Route::livewire('siswa/{student}/edit', 'pages::wali-kelas.students.edit')->name('students.edit');
+        });
+
+    Route::prefix('kehadiran')
+        ->name('attendance.')
+        ->group(function () {
+            Route::livewire('absensi', 'pages::attendance.absensi')
+                ->middleware('permission:'.Permission::ViewAttendance->value)
+                ->name('absensi');
+            Route::livewire('point', 'pages::attendance.points')
+                ->middleware('permission:'.Permission::ViewPoint->value)
+                ->name('points');
+        });
+
+    Route::prefix('academic')
+        ->name('academic.')
+        ->group(function () {
+            Route::livewire('prestasi', 'pages::academic.achievements.index')
+                ->middleware('permission:'.Permission::ViewAchievement->value)
+                ->name('achievements');
+            Route::livewire('pelanggaran', 'pages::academic.violations')
+                ->middleware('permission:'.Permission::ViewViolation->value)
+                ->name('violations');
         });
 });
 

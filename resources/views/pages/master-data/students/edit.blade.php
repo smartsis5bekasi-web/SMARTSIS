@@ -6,6 +6,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -104,6 +105,10 @@ new #[Title('Edit Siswa')] class extends Component {
 
         if ($this->avatar) {
             $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
+
+            if ($this->student->avatar_url) {
+                Storage::disk('public')->delete(Str::after($this->student->avatar_url, '/storage/'));
+            }
         }
 
         unset($data['avatar']);

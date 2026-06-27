@@ -17,7 +17,44 @@
                         <x-ui.sidebar-item icon="grid-outline" :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                             {{ __('Dashboard') }}
                         </x-ui.sidebar-item>
+                        @role(\App\Enums\UserRole::WaliKelas->value)
+                            <x-ui.sidebar-item icon="person-outline" :href="route('wali-kelas.students.index')" :active="request()->routeIs('wali-kelas.students*')">
+                                {{ __('Siswa') }}
+                            </x-ui.sidebar-item>
+                        @endrole
                     </div>
+
+                    @canany([\App\Enums\Permission::ViewAttendance->value, \App\Enums\Permission::ViewPoint->value])
+                        <div class="flex flex-col gap-1">
+                            <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Kehadiran') }}</p>
+                            @can(\App\Enums\Permission::ViewAttendance->value)
+                                <x-ui.sidebar-item icon="checkbox-outline" :href="route('attendance.absensi')" :active="request()->routeIs('attendance.absensi*')">
+                                    {{ __('Absensi') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                            @can(\App\Enums\Permission::ViewPoint->value)
+                                <x-ui.sidebar-item icon="star-outline" :href="route('attendance.points')" :active="request()->routeIs('attendance.points*')">
+                                    {{ __('Point') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                        </div>
+                    @endcanany
+
+                    @canany([\App\Enums\Permission::ViewAchievement->value, \App\Enums\Permission::ViewViolation->value])
+                        <div class="flex flex-col gap-1">
+                            <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Academic') }}</p>
+                            @can(\App\Enums\Permission::ViewAchievement->value)
+                                <x-ui.sidebar-item icon="trophy-outline" :href="route('academic.achievements')" :active="request()->routeIs('academic.achievements*')">
+                                    {{ __('Prestasi') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                            @can(\App\Enums\Permission::ViewViolation->value)
+                                <x-ui.sidebar-item icon="warning-outline" :href="route('academic.violations')" :active="request()->routeIs('academic.violations*')">
+                                    {{ __('Pelanggaran') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                        </div>
+                    @endcanany
 
                     @can(\App\Enums\Permission::ManageMasterData->value)
                         <div class="flex flex-col gap-1">

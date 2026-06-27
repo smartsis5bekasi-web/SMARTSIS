@@ -1,9 +1,7 @@
 <?php
 
 use App\Models\Classroom;
-use App\Models\Major;
 use App\Models\Student;
-use App\Models\Teacher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -13,8 +11,10 @@ use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
-new #[Title('Tambah Siswa')] class extends Component {
+new #[Title('Edit Siswa')] class extends Component {
     use WithFileUploads;
+
+    public Student $student;
 
     public string $name = '';
 
@@ -30,11 +30,32 @@ new #[Title('Tambah Siswa')] class extends Component {
 
     public ?int $classroom_id = null;
 
-    public ?int $major_id = null;
-
-    public ?int $teacher_id = null;
-
     public ?TemporaryUploadedFile $avatar = null;
+
+    public function mount(Student $student): void
+    {
+        abort_unless(in_array($student->classroom_id, $this->classroomOptions->pluck('id')->all(), true), 403);
+
+        $this->student = $student;
+        $this->name = $student->name;
+        $this->nis = $student->nis;
+        $this->nisn = $student->nisn;
+        $this->gender = $student->gender;
+        $this->birth_date = $student->birth_date?->format('Y-m-d');
+        $this->address = $student->address;
+        $this->classroom_id = $student->classroom_id;
+    }
+
+    /**
+     * Classrooms led by the signed-in wali kelas.
+     *
+     * @return Collection<int, Classroom>
+     */
+    #[Computed]
+    public function classroomOptions(): Collection
+    {
+        return auth()->user()->teacher?->homeroomClassrooms()->orderBy('name')->get() ?? new Collection;
+    }
 
     /**
      * @return array<string, array<int, mixed>>
@@ -43,48 +64,24 @@ new #[Title('Tambah Siswa')] class extends Component {
     {
         return [
             'name' => ['required', 'string', 'max:100'],
-            'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
-            'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],
+            'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')->ignore($this->student->id)],
+            'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')->ignore($this->student->id)],
             'gender' => ['nullable', Rule::in(['L', 'P'])],
             'birth_date' => ['nullable', 'date'],
             'address' => ['nullable', 'string', 'max:255'],
-            'classroom_id' => ['required', Rule::exists('classrooms', 'id')],
-            'major_id' => ['nullable', Rule::exists('majors', 'id')],
-            'teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
+            'classroom_id' => ['required', Rule::in($this->classroomOptions->pluck('id')->all())],
             'avatar' => ['nullable', 'image', 'max:2048'],
         ];
-    }
-
-    /**
-     * @return Collection<int, Classroom>
-     */
-    #[Computed]
-    public function classroomOptions(): Collection
-    {
-        return Classroom::query()->orderBy('name')->get();
-    }
-
-    /**
-     * @return Collection<int, Major>
-     */
-    #[Computed]
-    public function majorOptions(): Collection
-    {
-        return Major::query()->orderBy('name')->get();
-    }
-
-    /**
-     * @return Collection<int, Teacher>
-     */
-    #[Computed]
-    public function teacherOptions(): Collection
-    {
-        return Teacher::query()->orderBy('name')->get();
     }
 
     public function save(): void
     {
         $data = $this->validate();
+
+        $classroom = $this->classroomOptions->firstWhere('id', $this->classroom_id);
+
+        $data['major_id'] = $classroom?->major_id;
+        $data['teacher_id'] = auth()->user()->teacher?->id;
 
         if ($this->avatar) {
             $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
@@ -92,18 +89,18 @@ new #[Title('Tambah Siswa')] class extends Component {
 
         unset($data['avatar']);
 
-        Student::create($data);
+        $this->student->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa ditambahkan.')]);
+        session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa diperbarui.')]);
 
-        $this->redirectRoute('master-data.students.index', navigate: true);
+        $this->redirectRoute('wali-kelas.students.index', navigate: true);
     }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <x-ui.page-header :title="__('Tambah Siswa')" :subtitle="__('Isi data siswa.')">
+    <x-ui.page-header :title="__('Edit Siswa')" :subtitle="__('Perbarui data siswa di kelas perwalian Anda.')">
         <x-slot:actions>
-            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.students.index')" wire:navigate>
+            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('wali-kelas.students.index')" wire:navigate>
                 {{ __('Kembali') }}
             </x-ui.button>
         </x-slot:actions>
@@ -116,9 +113,9 @@ new #[Title('Tambah Siswa')] class extends Component {
             <div class="h-[200px] w-[200px] cursor-pointer rounded-2xl border-2 border-dashed border-primary-400 bg-gray-100"
                 @click="$refs.avatar.click()">
                 <img class="h-[196px] w-[196px] rounded-2xl object-cover"
-                    src="{{ asset('assets/placeholder.png') }}"
-                    x-bind:src="photoPreview ?? '{{ asset('assets/placeholder.png') }}'"
-                    alt="{{ __('Foto Profil') }}">
+                    src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}"
+                    x-bind:src="photoPreview ?? '{{ $student->avatar_url ?? asset('assets/placeholder.png') }}'"
+                    alt="{{ $student->name }}">
             </div>
             <input type="file" wire:model="avatar" x-ref="avatar" class="hidden" accept="image/*"
                 x-on:change="
@@ -137,7 +134,7 @@ new #[Title('Tambah Siswa')] class extends Component {
         <div class="mb-8 grid grid-cols-1 gap-8 md:grid-cols-2">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama') }} <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="name" placeholder="Nama Siswa"
+                <input type="text" wire:model="name" placeholder="Muhamad Hafidz"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('name')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -186,38 +183,11 @@ new #[Title('Tambah Siswa')] class extends Component {
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Kelas') }} <span class="text-red-500">*</span></label>
                 <x-slim-select wire:model="classroom_id" placeholder="{{ __('Pilih kelas') }}">
-                    <option value="">{{ __('Pilih kelas') }}</option>
                     @foreach ($this->classroomOptions as $class)
                         <option value="{{ $class->id }}">{{ $class->name }}</option>
                     @endforeach
                 </x-slim-select>
                 @error('classroom_id')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Jurusan') }}</label>
-                <x-slim-select wire:model="major_id" placeholder="{{ __('Pilih jurusan') }}">
-                    <option value="">{{ __('Pilih jurusan') }}</option>
-                    @foreach ($this->majorOptions as $major)
-                        <option value="{{ $major->id }}">{{ $major->name }}</option>
-                    @endforeach
-                </x-slim-select>
-                @error('major_id')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Guru') }}</label>
-                <x-slim-select wire:model="teacher_id" placeholder="{{ __('Pilih guru') }}">
-                    <option value="">{{ __('Pilih guru') }}</option>
-                    @foreach ($this->teacherOptions as $teacher)
-                        <option value="{{ $teacher->id }}">{{ $teacher->name }}</option>
-                    @endforeach
-                </x-slim-select>
-                @error('teacher_id')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>
@@ -233,7 +203,7 @@ new #[Title('Tambah Siswa')] class extends Component {
         </div>
 
         <div class="flex justify-end gap-2">
-            <x-ui.button variant="secondary" :href="route('master-data.students.index')" wire:navigate>
+            <x-ui.button variant="secondary" :href="route('wali-kelas.students.index')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
             <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
