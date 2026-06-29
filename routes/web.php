@@ -42,23 +42,56 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('kehadiran')
         ->name('attendance.')
         ->group(function () {
-            Route::livewire('absensi', 'pages::attendance.absensi')
+            Route::livewire('absensi', 'pages::attendance.absensi.index')
                 ->middleware('permission:'.Permission::ViewAttendance->value)
                 ->name('absensi');
-            Route::livewire('point', 'pages::attendance.points')
+            Route::livewire('point', 'pages::attendance.point.index')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points');
+            Route::livewire('point/monitoring', 'pages::attendance.point.monitoring')
+                ->middleware('permission:'.Permission::ViewPoint->value)
+                ->name('points.monitoring');
+            Route::livewire('point/{student}/detail', 'pages::attendance.point.show')
+                ->middleware('permission:'.Permission::ViewPoint->value)
+                ->name('points.show');
+            Route::livewire('point/aturan/tambah', 'pages::attendance.point.create')
+                ->middleware('permission:'.Permission::ManagePoint->value)
+                ->name('points.create');
+            Route::livewire('point/aturan/{pointRule}/edit', 'pages::attendance.point.edit')
+                ->middleware('permission:'.Permission::ManagePoint->value)
+                ->name('points.edit');
+            Route::livewire('point/pengaturan', 'pages::attendance.point.settings')
+                ->middleware('permission:'.Permission::ManagePoint->value)
+                ->name('points.settings');
         });
 
     Route::prefix('academic')
         ->name('academic.')
         ->group(function () {
-            Route::livewire('prestasi', 'pages::academic.achievements.index')
+            Route::livewire('prestasi', 'pages::academic.achievement.index')
                 ->middleware('permission:'.Permission::ViewAchievement->value)
                 ->name('achievements');
-            Route::livewire('pelanggaran', 'pages::academic.violations')
+            Route::livewire('prestasi/ajukan', 'pages::academic.achievement.create')
+                ->middleware('permission:'.Permission::RequestAchievement->value.'|'.Permission::ManageAchievement->value)
+                ->name('achievements.create');
+            Route::livewire('prestasi/{achievement}/edit', 'pages::academic.achievement.edit')
+                ->middleware('permission:'.Permission::RequestAchievement->value.'|'.Permission::ManageAchievement->value)
+                ->name('achievements.edit');
+            Route::livewire('prestasi/{achievement}', 'pages::academic.achievement.show')
+                ->middleware('permission:'.Permission::ViewAchievement->value)
+                ->name('achievements.show');
+            Route::livewire('pelanggaran', 'pages::academic.violation.index')
                 ->middleware('permission:'.Permission::ViewViolation->value)
                 ->name('violations');
+            Route::livewire('pelanggaran/catat', 'pages::academic.violation.create')
+                ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
+                ->name('violations.create');
+            Route::livewire('pelanggaran/{violation}/edit', 'pages::academic.violation.edit')
+                ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
+                ->name('violations.edit');
+            Route::livewire('pelanggaran/{violation}', 'pages::academic.violation.show')
+                ->middleware('permission:'.Permission::ViewViolation->value)
+                ->name('violations.show');
         });
 });
 

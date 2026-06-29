@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -88,6 +89,32 @@ class Student extends Model
         return $this->belongsToMany(ParentGuardian::class, 'parent_student', 'student_id', 'parent_id')
             ->withPivot('relationship')
             ->withTimestamps();
+    }
+
+    /**
+     * The student's full point-change history (audit trail).
+     *
+     * @return HasMany<PointLog, $this>
+     */
+    public function pointLogs(): HasMany
+    {
+        return $this->hasMany(PointLog::class);
+    }
+
+    /**
+     * @return HasMany<Violation, $this>
+     */
+    public function violations(): HasMany
+    {
+        return $this->hasMany(Violation::class);
+    }
+
+    /**
+     * @return HasMany<Achievement, $this>
+     */
+    public function achievements(): HasMany
+    {
+        return $this->hasMany(Achievement::class);
     }
 
     /**

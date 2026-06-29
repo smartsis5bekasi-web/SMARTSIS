@@ -116,6 +116,7 @@ class RolePermissionSeeder extends Seeder
                 $p(PermissionEnum::ViewViolation),
                 $p(PermissionEnum::ViewPoint),
                 $p(PermissionEnum::ViewAchievement),
+                $p(PermissionEnum::RequestAchievement),
                 $p(PermissionEnum::ViewPermit),
                 $p(PermissionEnum::RequestPermit),
                 $p(PermissionEnum::ViewWarning),

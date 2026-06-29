@@ -28,6 +28,7 @@ enum Permission: string
 
     // Achievements.
     case ViewAchievement = 'achievement.view';
+    case RequestAchievement = 'achievement.request';
     case ManageAchievement = 'achievement.manage';
 
     // Permission requests (perizinan).

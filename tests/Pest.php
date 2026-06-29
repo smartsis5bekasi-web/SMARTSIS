@@ -44,7 +44,13 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Create a verified user assigned to the given role.
+ */
+function userWithRole(App\Enums\UserRole $role): App\Models\User
 {
-    // ..
+    $user = App\Models\User::factory()->create();
+    $user->assignRole($role->value);
+
+    return $user;
 }

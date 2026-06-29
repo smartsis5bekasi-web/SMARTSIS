@@ -4,6 +4,7 @@ use App\Enums\UserRole;
 use App\Models\AcademicYear;
 use App\Models\Classroom;
 use App\Models\ParentGuardian;
+use App\Models\PointSetting;
 use App\Models\Student;
 use App\Models\Teacher;
 use Illuminate\Database\Eloquent\Collection;
@@ -103,6 +104,27 @@ new #[Title('Dashboard')] class extends Component
     public function student(): ?Student
     {
         return auth()->user()->student?->load('classroom', 'major');
+    }
+
+    /**
+     * The discipline-point overview for the signed-in student's card.
+     *
+     * @return array{current: int, target: int, min: int, progress: int, belowMin: bool}
+     */
+    #[Computed]
+    public function pointSummary(): array
+    {
+        $setting = PointSetting::current();
+        $current = $this->student?->current_point ?? 0;
+        $target = max(1, $setting->target_point);
+
+        return [
+            'current' => $current,
+            'target' => $setting->target_point,
+            'min' => $setting->min_point,
+            'progress' => (int) min(100, round($current / $target * 100)),
+            'belowMin' => $current < $setting->min_point,
+        ];
     }
 
     /**
@@ -210,6 +232,33 @@ new #[Title('Dashboard')] class extends Component
                             </flux:badge>
                         </flux:heading>
                     </div>
+                </div>
+            </div>
+
+            {{-- Development Point overview --}}
+            @php($point = $this->pointSummary)
+            <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                <div class="flex items-center justify-between">
+                    <flux:heading size="lg">{{ __('Development Point') }}</flux:heading>
+                    @if ($point['belowMin'])
+                        <flux:badge color="red" size="sm">{{ __('Di Bawah Minimum') }}</flux:badge>
+                    @else
+                        <flux:badge color="green" size="sm">{{ __('Aman') }}</flux:badge>
+                    @endif
+                </div>
+
+                <div class="mt-4 flex items-end justify-between">
+                    <flux:text class="text-sm">{{ __('Total Points') }}</flux:text>
+                    <flux:heading class="tabular-nums">{{ $point['current'] }} <span class="text-sm font-normal text-zinc-400">{{ __('of') }} {{ $point['target'] }}</span></flux:heading>
+                </div>
+                <div class="mt-2 h-3 w-full overflow-hidden rounded-full bg-zinc-100">
+                    <div class="h-full rounded-full bg-primary-600 transition-all" style="width: {{ $point['progress'] }}%"></div>
+                </div>
+
+                <div class="mt-4 flex justify-end">
+                    <flux:link :href="route('attendance.points.show', $student)" wire:navigate class="text-sm font-medium">
+                        {{ __('View More Detail') }} →
+                    </flux:link>
                 </div>
             </div>
         @elseif ($role === UserRole::OrangTua)
