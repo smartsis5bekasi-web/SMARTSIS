@@ -2,6 +2,7 @@
 
 use App\Models\Classroom;
 use App\Models\Major;
+use App\Models\ParentGuardian;
 use App\Models\Student;
 use App\Models\Teacher;
 use Illuminate\Database\Eloquent\Collection;
@@ -37,6 +38,13 @@ new #[Title('Tambah Siswa')] class extends Component {
     public ?TemporaryUploadedFile $avatar = null;
 
     /**
+     * Parent/guardian rows entered together with the student (F-04).
+     *
+     * @var array<int, array{name: string, relationship: string, phone: ?string}>
+     */
+    public array $parents = [];
+
+    /**
      * @return array<string, array<int, mixed>>
      */
     protected function rules(): array
@@ -52,7 +60,43 @@ new #[Title('Tambah Siswa')] class extends Component {
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
             'teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
             'avatar' => ['nullable', 'image', 'max:2048'],
+            'parents' => ['array'],
+            'parents.*.name' => ['required', 'string', 'max:100'],
+            'parents.*.relationship' => ['required', Rule::in(self::relationshipOptions())],
+            'parents.*.phone' => ['nullable', 'string', 'max:20'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function validationAttributes(): array
+    {
+        return [
+            'parents.*.name' => __('nama orang tua'),
+            'parents.*.relationship' => __('hubungan'),
+            'parents.*.phone' => __('no. HP orang tua'),
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function relationshipOptions(): array
+    {
+        return ['Ayah', 'Ibu', 'Wali'];
+    }
+
+    public function addParent(): void
+    {
+        $this->parents[] = ['name' => '', 'relationship' => 'Ayah', 'phone' => null];
+    }
+
+    public function removeParent(int $index): void
+    {
+        unset($this->parents[$index]);
+        $this->parents = array_values($this->parents);
+        $this->resetErrorBag('parents.*');
     }
 
     /**
@@ -90,9 +134,19 @@ new #[Title('Tambah Siswa')] class extends Component {
             $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
         }
 
-        unset($data['avatar']);
+        $parentRows = $data['parents'] ?? [];
+        unset($data['avatar'], $data['parents']);
 
-        Student::create($data);
+        $student = Student::create($data);
+
+        foreach ($parentRows as $row) {
+            $parent = ParentGuardian::create([
+                'name' => $row['name'],
+                'phone' => $row['phone'] ?? null,
+            ]);
+
+            $student->parents()->attach($parent->id, ['relationship' => $row['relationship']]);
+        }
 
         session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa ditambahkan.')]);
 
@@ -230,6 +284,62 @@ new #[Title('Tambah Siswa')] class extends Component {
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>
+        </div>
+
+        <div class="mb-8 flex flex-col gap-4">
+            <div class="flex items-center justify-between gap-4">
+                <div class="flex flex-col">
+                    <label class="font-semibold text-gray-600">{{ __('Data Orang Tua / Wali') }}</label>
+                    <span class="text-xs text-gray-500">{{ __('Orang tua yang terdaftar dapat dihubungkan dengan akun monitoring.') }}</span>
+                </div>
+                <x-ui.button variant="secondary" icon="add-outline" wire:click="addParent">
+                    {{ __('Tambah Orang Tua') }}
+                </x-ui.button>
+            </div>
+
+            @forelse ($parents as $index => $row)
+                <div wire:key="parent-row-{{ $index }}" class="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-[1fr_170px_200px_auto] md:items-start">
+                    <div class="flex flex-col">
+                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Nama Orang Tua') }} <span class="text-red-500">*</span></label>
+                        <input type="text" wire:model="parents.{{ $index }}.name" placeholder="{{ __('Nama lengkap') }}"
+                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                        @error('parents.'.$index.'.name')
+                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <div class="flex flex-col">
+                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Hubungan') }} <span class="text-red-500">*</span></label>
+                        <select wire:model="parents.{{ $index }}.relationship"
+                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                            @foreach (self::relationshipOptions() as $relationship)
+                                <option value="{{ $relationship }}">{{ $relationship }}</option>
+                            @endforeach
+                        </select>
+                        @error('parents.'.$index.'.relationship')
+                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <div class="flex flex-col">
+                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('No. HP') }}</label>
+                        <input type="text" wire:model="parents.{{ $index }}.phone" placeholder="08xxxxxxxxxx" inputmode="numeric"
+                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                        @error('parents.'.$index.'.phone')
+                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                        @enderror
+                    </div>
+
+                    <button type="button" wire:click="removeParent({{ $index }})" title="{{ __('Hapus') }}"
+                        class="mt-6 inline-flex items-center justify-center rounded-md p-2 text-red-500 transition hover:bg-red-50">
+                        <span wire:ignore class="inline-flex"><ion-icon name="trash-outline" class="text-xl"></ion-icon></span>
+                    </button>
+                </div>
+            @empty
+                <p class="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500">
+                    {{ __('Belum ada data orang tua. Klik "Tambah Orang Tua" untuk menambahkan.') }}
+                </p>
+            @endforelse
         </div>
 
         <div class="flex justify-end gap-2">

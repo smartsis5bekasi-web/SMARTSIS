@@ -22,4 +22,12 @@ class ParentGuardianFactory extends Factory
             'phone' => fake()->numerify('08##########'),
         ];
     }
+
+    /**
+     * Parent entered as student master data, before an account is provisioned.
+     */
+    public function withoutAccount(): static
+    {
+        return $this->state(fn (): array => ['user_id' => null]);
+    }
 }

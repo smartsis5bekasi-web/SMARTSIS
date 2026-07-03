@@ -86,6 +86,7 @@ test('a wali kelas cannot delete a student outside their class', function () {
 test('non wali kelas users cannot access the route', function () {
     $student = User::factory()->create();
     $student->assignRole(UserRole::Siswa->value);
+    Student::factory()->onboarded()->create(['user_id' => $student->id]);
 
     $this->actingAs($student)
         ->get(route('wali-kelas.students.index'))

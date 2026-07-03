@@ -16,7 +16,7 @@ test('guests are redirected from the achievement page', function () {
 
 test('a student can open the submission form', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)->get(route('academic.achievements.create'))->assertOk();
 });
@@ -35,7 +35,7 @@ test('a view-only role cannot open the submission form', function () {
 
 test('a student cannot view another students achievement', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id]);
     $other = Achievement::factory()->create();
 
     $this->actingAs($user)
@@ -59,7 +59,7 @@ test('a student cannot approve an achievement', function () {
 
 test('an approved achievement cannot be edited', function () {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->onboarded()->create(['user_id' => $user->id]);
     $achievement = Achievement::factory()->approved()->create(['student_id' => $student->id]);
 
     $this->actingAs($user)

@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * "Parent" is a reserved word in PHP.
  *
  * @property int $id
- * @property int $user_id
+ * @property int|null $user_id
  * @property string $name
  * @property string|null $phone
  */

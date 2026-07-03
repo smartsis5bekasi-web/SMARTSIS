@@ -13,17 +13,6 @@ beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 });
 
-/**
- * Create a verified user assigned to the given role.
- */
-function userWithRole(UserRole $role): User
-{
-    $user = User::factory()->create();
-    $user->assignRole($role->value);
-
-    return $user;
-}
-
 test('guests are redirected to the login page', function () {
     $this->get(route('dashboard'))->assertRedirect(route('login'));
 });
@@ -84,7 +73,7 @@ test('wali kelas only sees their own homeroom class students', function () {
 
 test('a student sees their own profile and point', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id, 'nis' => '2025999', 'current_point' => 80]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id, 'nis' => '2025999', 'current_point' => 80]);
 
     $this->actingAs($user);
 

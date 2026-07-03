@@ -25,6 +25,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $major_id
  * @property int|null $year_in
  * @property int $current_point
+ * @property array<int, array<int, float>>|null $face_descriptors
+ * @property Carbon|null $face_registered_at
+ * @property Carbon|null $onboarded_at
  */
 class Student extends Model
 {
@@ -45,7 +48,27 @@ class Student extends Model
         'major_id',
         'year_in',
         'current_point',
+        'face_descriptors',
+        'face_registered_at',
+        'onboarded_at',
     ];
+
+    /**
+     * Whether the student has finished the first-login onboarding
+     * (NISN verified, face registered, and confirmed).
+     */
+    public function hasCompletedOnboarding(): bool
+    {
+        return $this->onboarded_at !== null;
+    }
+
+    /**
+     * Whether a face template is stored for Smart Attendance matching.
+     */
+    public function hasRegisteredFace(): bool
+    {
+        return filled($this->face_descriptors);
+    }
 
     /**
      * @return BelongsTo<User, $this>
@@ -126,6 +149,9 @@ class Student extends Model
             'birth_date' => 'date',
             'current_point' => 'integer',
             'year_in' => 'integer',
+            'face_descriptors' => 'array',
+            'face_registered_at' => 'datetime',
+            'onboarded_at' => 'datetime',
         ];
     }
 }

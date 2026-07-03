@@ -34,7 +34,7 @@ test('a view-only role cannot open the recording form', function () {
 
 test('a student cannot open the recording form', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)
         ->get(route('academic.violations.create'))
@@ -43,7 +43,7 @@ test('a student cannot open the recording form', function () {
 
 test('a student cannot view another students violation', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id]);
     $other = Violation::factory()->create();
 
     $this->actingAs($user)

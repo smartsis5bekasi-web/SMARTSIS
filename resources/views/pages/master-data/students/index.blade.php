@@ -17,7 +17,7 @@ new #[Title('Siswa')] class extends Component {
     public function students(): LengthAwarePaginator
     {
         return Student::query()
-            ->with(['classroom', 'major', 'teacher'])
+            ->with(['classroom', 'major', 'teacher', 'parents'])
             ->orderBy('name')
             ->paginate(10);
     }
@@ -49,6 +49,7 @@ new #[Title('Siswa')] class extends Component {
                         <th class="py-2.5 px-4">Kelas</th>
                         <th class="py-2.5 px-4">Jurusan</th>
                         <th class="py-2.5 px-4">Jenis Kelamin</th>
+                        <th class="py-2.5 px-4">Orang Tua</th>
                             <th class="py-2.5 px-4 text-center">Aksi</th>
                     </tr>
                 </thead>
@@ -76,6 +77,13 @@ new #[Title('Siswa')] class extends Component {
                             </td>
                             <td class="py-2.5 px-4">
                               {{ $student->gender === 'L' ? __('Laki-laki') : ($student->gender === 'P' ? __('Perempuan') : '—') }}
+                            </td>
+                            <td class="py-2.5 px-4">
+                                @forelse ($student->parents as $parent)
+                                    <p class="max-w-xs whitespace-nowrap">{{ $parent->name }} <span class="text-xs text-gray-400">({{ $parent->pivot->relationship ?? '—' }})</span></p>
+                                @empty
+                                    —
+                                @endforelse
                             </td>
                             
                                 <td class="py-2.5 px-4">

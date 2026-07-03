@@ -25,7 +25,7 @@ class AchievementFactory extends Factory
             'input_by' => null,
             'verified_by' => null,
             'status' => PointApprovalStatus::Pending,
-            'level' => fake()->randomElement(['Sekolah', 'Kota', 'Provinsi', 'Nasional']),
+            'level' => fake()->randomElement(['Sekolah', 'Kabupaten/Kota', 'Provinsi', 'Nasional', 'Internasional']),
             'description' => fake()->optional()->paragraph(),
             'note' => null,
             'evidence_path' => null,

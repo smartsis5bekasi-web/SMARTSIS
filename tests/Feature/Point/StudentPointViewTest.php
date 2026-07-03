@@ -10,7 +10,7 @@ beforeEach(function () {
 
 test('a student can view their own development point page', function () {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->onboarded()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)
         ->get(route('attendance.points.show', $student))
@@ -19,7 +19,7 @@ test('a student can view their own development point page', function () {
 
 test('a student cannot view another students development point', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id]);
+    Student::factory()->onboarded()->create(['user_id' => $user->id]);
     $other = Student::factory()->create();
 
     $this->actingAs($user)
@@ -29,7 +29,7 @@ test('a student cannot view another students development point', function () {
 
 test('the point menu redirects a student to their own detail page', function () {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->onboarded()->create(['user_id' => $user->id]);
 
     $this->actingAs($user)
         ->get(route('attendance.points'))

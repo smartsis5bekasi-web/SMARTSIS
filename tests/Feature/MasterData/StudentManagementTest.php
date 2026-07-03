@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Classroom;
+use App\Models\ParentGuardian;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Http\UploadedFile;
@@ -109,4 +110,97 @@ test('replacing the avatar deletes the previous file', function () {
 
     Storage::disk('public')->assertMissing($firstPath);
     Storage::disk('public')->assertExists(Str::after($student->refresh()->avatar_url, '/storage/'));
+});
+
+test('creating a student with parents links them with the relationship', function () {
+    $classroom = Classroom::factory()->create();
+
+    Livewire::test('pages::master-data.students.create')
+        ->set('name', 'Hafidz')
+        ->set('nis', '0012345678')
+        ->set('classroom_id', $classroom->id)
+        ->call('addParent')
+        ->set('parents.0.name', 'Budi Hartono')
+        ->set('parents.0.relationship', 'Ayah')
+        ->set('parents.0.phone', '081234567890')
+        ->call('addParent')
+        ->set('parents.1.name', 'Siti Aminah')
+        ->set('parents.1.relationship', 'Ibu')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $student = Student::firstWhere('nis', '0012345678');
+
+    expect($student->parents)->toHaveCount(2)
+        ->and($student->parents->firstWhere('name', 'Budi Hartono')->pivot->relationship)->toBe('Ayah')
+        ->and($student->parents->firstWhere('name', 'Budi Hartono')->phone)->toBe('081234567890')
+        ->and($student->parents->firstWhere('name', 'Siti Aminah')->pivot->relationship)->toBe('Ibu')
+        ->and($student->parents->firstWhere('name', 'Budi Hartono')->user_id)->toBeNull();
+});
+
+test('a parent row requires a name', function () {
+    $classroom = Classroom::factory()->create();
+
+    Livewire::test('pages::master-data.students.create')
+        ->set('name', 'Hafidz')
+        ->set('nis', '0012345678')
+        ->set('classroom_id', $classroom->id)
+        ->call('addParent')
+        ->call('save')
+        ->assertHasErrors(['parents.0.name' => 'required']);
+});
+
+test('editing preloads the linked parents and updates them', function () {
+    $classroom = Classroom::factory()->create();
+    $student = Student::factory()->create(['classroom_id' => $classroom->id]);
+    $parent = ParentGuardian::factory()->withoutAccount()->create(['name' => 'Budi Lama']);
+    $student->parents()->attach($parent->id, ['relationship' => 'Ayah']);
+
+    Livewire::test('pages::master-data.students.edit', ['student' => $student])
+        ->assertSet('parents.0.name', 'Budi Lama')
+        ->assertSet('parents.0.relationship', 'Ayah')
+        ->set('parents.0.name', 'Budi Baru')
+        ->set('parents.0.relationship', 'Wali')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($parent->refresh()->name)->toBe('Budi Baru')
+        ->and($student->parents()->first()->pivot->relationship)->toBe('Wali');
+});
+
+test('removing a parent row detaches it and deletes an orphaned record', function () {
+    $classroom = Classroom::factory()->create();
+    $student = Student::factory()->create(['classroom_id' => $classroom->id]);
+    $parent = ParentGuardian::factory()->withoutAccount()->create();
+    $student->parents()->attach($parent->id, ['relationship' => 'Ibu']);
+
+    Livewire::test('pages::master-data.students.edit', ['student' => $student])
+        ->call('removeParent', 0)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->parents()->count())->toBe(0);
+    $this->assertDatabaseMissing('parents', ['id' => $parent->id]);
+});
+
+test('a detached parent with an account or other children is kept', function () {
+    $classroom = Classroom::factory()->create();
+    $student = Student::factory()->create(['classroom_id' => $classroom->id]);
+    $sibling = Student::factory()->create();
+    $withAccount = ParentGuardian::factory()->create();
+    $sharedParent = ParentGuardian::factory()->withoutAccount()->create();
+    $student->parents()->attach($withAccount->id, ['relationship' => 'Ayah']);
+    $student->parents()->attach($sharedParent->id, ['relationship' => 'Ibu']);
+    $sibling->parents()->attach($sharedParent->id, ['relationship' => 'Ibu']);
+
+    Livewire::test('pages::master-data.students.edit', ['student' => $student])
+        ->call('removeParent', 1)
+        ->call('removeParent', 0)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->parents()->count())->toBe(0);
+    $this->assertDatabaseHas('parents', ['id' => $withAccount->id]);
+    $this->assertDatabaseHas('parents', ['id' => $sharedParent->id]);
+    expect($sibling->parents()->count())->toBe(1);
 });

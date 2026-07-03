@@ -30,4 +30,16 @@ class StudentFactory extends Factory
             'current_point' => 100,
         ];
     }
+
+    /**
+     * Student who has finished the first-login onboarding (face registered + confirmed).
+     */
+    public function onboarded(): static
+    {
+        return $this->state(fn (): array => [
+            'face_descriptors' => [array_map(fn (): float => fake()->randomFloat(6, -1, 1), range(1, 128))],
+            'face_registered_at' => now(),
+            'onboarded_at' => now(),
+        ]);
+    }
 }
