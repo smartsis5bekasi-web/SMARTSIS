@@ -32,11 +32,22 @@ class StudentFactory extends Factory
     }
 
     /**
+     * Student who has passed the NISN verification step of onboarding.
+     */
+    public function nisnVerified(): static
+    {
+        return $this->state(fn (): array => [
+            'nisn_verified_at' => now(),
+        ]);
+    }
+
+    /**
      * Student who has finished the first-login onboarding (face registered + confirmed).
      */
     public function onboarded(): static
     {
         return $this->state(fn (): array => [
+            'nisn_verified_at' => now(),
             'face_descriptors' => [array_map(fn (): float => fake()->randomFloat(6, -1, 1), range(1, 128))],
             'face_registered_at' => now(),
             'onboarded_at' => now(),

@@ -13,6 +13,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/js/passkeys.js',
                 'resources/js/face-onboarding.js',
+                'resources/js/face-attendance.js',
             ],
             refresh: true,
             fonts: [

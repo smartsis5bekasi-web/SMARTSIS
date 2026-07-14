@@ -1,6 +1,9 @@
 <?php
 
 use App\Enums\UserRole;
+use App\Models\Classroom;
+use App\Models\PointSetting;
+use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
 use Livewire\Livewire;
 
@@ -34,4 +37,39 @@ test('the minimum point cannot exceed the target', function () {
         ->set('min_point', 150)
         ->call('save')
         ->assertHasErrors('min_point');
+});
+
+test('a new student starts with the configured initial point', function () {
+    PointSetting::current()->update(['initial_point' => 85]);
+
+    $student = Student::create([
+        'name' => 'Siswa Baru',
+        'nis' => '0099001122',
+    ]);
+
+    expect($student->current_point)->toBe(85);
+});
+
+test('creating a student via master data uses the configured initial point', function () {
+    PointSetting::current()->update(['initial_point' => 75]);
+    $classroom = Classroom::factory()->create();
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::master-data.students.create')
+        ->set('name', 'Hafidz')
+        ->set('nis', '0012345678')
+        ->set('classroom_id', $classroom->id)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Student::firstWhere('nis', '0012345678')->current_point)->toBe(75);
+});
+
+test('an explicitly provided point balance is not overridden', function () {
+    PointSetting::current()->update(['initial_point' => 85]);
+
+    $student = Student::factory()->create(['current_point' => 40]);
+
+    expect($student->current_point)->toBe(40);
 });

@@ -24,23 +24,33 @@
                         @endrole
                     </div>
 
-                    @canany([\App\Enums\Permission::ViewAttendance->value, \App\Enums\Permission::ViewPoint->value])
+                    @canany([\App\Enums\Permission::ViewAttendance->value, \App\Enums\Permission::ViewPoint->value, \App\Enums\Permission::ViewPermit->value])
                         <div class="flex flex-col gap-1">
                             <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Kehadiran') }}</p>
                             @can(\App\Enums\Permission::ViewAttendance->value)
-                                <x-ui.sidebar-item icon="checkbox-outline" :href="route('attendance.absensi')" :active="request()->routeIs('attendance.absensi*')">
+                                <x-ui.sidebar-item icon="checkbox-outline" :href="route('attendance.absensi')" :active="request()->routeIs('attendance.absensi*') && ! request()->routeIs('attendance.absensi.scan')">
                                     {{ __('Absensi') }}
                                 </x-ui.sidebar-item>
                             @endcan
+                            @if (auth()->user()->can(\App\Enums\Permission::ManageAttendance->value) || auth()->user()->hasRole(\App\Enums\UserRole::Siswa->value))
+                                <x-ui.sidebar-item icon="scan-outline" :href="route('attendance.absensi.scan')" :active="request()->routeIs('attendance.absensi.scan')">
+                                    {{ __('Scan Absensi') }}
+                                </x-ui.sidebar-item>
+                            @endif
                             @can(\App\Enums\Permission::ViewPoint->value)
                                 <x-ui.sidebar-item icon="star-outline" :href="route('attendance.points')" :active="request()->routeIs('attendance.points*')">
                                     {{ __('Point') }}
                                 </x-ui.sidebar-item>
                             @endcan
+                            @can(\App\Enums\Permission::ViewPermit->value)
+                                <x-ui.sidebar-item icon="document-text-outline" :href="route('permits.index')" :active="request()->routeIs('permits.*')">
+                                    {{ __('Perizinan') }}
+                                </x-ui.sidebar-item>
+                            @endcan
                         </div>
                     @endcanany
 
-                    @canany([\App\Enums\Permission::ViewAchievement->value, \App\Enums\Permission::ViewViolation->value])
+                    @canany([\App\Enums\Permission::ViewAchievement->value, \App\Enums\Permission::ViewViolation->value, \App\Enums\Permission::ViewWarning->value])
                         <div class="flex flex-col gap-1">
                             <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Academic') }}</p>
                             @can(\App\Enums\Permission::ViewAchievement->value)
@@ -51,6 +61,11 @@
                             @can(\App\Enums\Permission::ViewViolation->value)
                                 <x-ui.sidebar-item icon="warning-outline" :href="route('academic.violations')" :active="request()->routeIs('academic.violations*')">
                                     {{ __('Pelanggaran') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                            @can(\App\Enums\Permission::ViewWarning->value)
+                                <x-ui.sidebar-item icon="mail-open-outline" :href="route('warnings.index')" :active="request()->routeIs('warnings.*')">
+                                    {{ __('Surat Peringatan') }}
                                 </x-ui.sidebar-item>
                             @endcan
                         </div>

@@ -320,20 +320,3 @@ Tablet/Smartphone Android atau laptop berkamera. Minimum: kamera HD, RAM 4 GB, C
 ## 11. Catatan Perubahan Ruang Lingkup
 Perubahan ruang lingkup setelah pengembangan berjalan dikategorikan pekerjaan tambahan dan dituangkan dalam **Change Request / addendum** yang disepakati kedua pihak (penyesuaian waktu/biaya bila perlu).
 
-## Login Access
-
-┌───────────────────┬─────────────────────────────────┬──────────┐
-│       Role        │              Email              │ Password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Kepala Sekolah    │ kepala_sekolah@smartsis.test    │ password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Wakasek Kesiswaan │ wakasek_kesiswaan@smartsis.test │ password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Guru BK           │ guru_bk@smartsis.test           │ password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Wali Kelas        │ wali_kelas@smartsis.test        │ password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Guru Piket        │ guru_piket@smartsis.test        │ password │
-├───────────────────┼─────────────────────────────────┼──────────┤
-│ Guru Mapel        │ guru_mapel@smartsis.test        │ password │
-└───────────────────┴─────────────────────────────────┴──────────┘

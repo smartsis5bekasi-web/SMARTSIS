@@ -52,6 +52,20 @@ function stopCamera() {
 }
 
 /**
+ * Grab the current video frame as a JPEG data URL. The first sample's frame
+ * doubles as the student's profile photo.
+ */
+function captureSnapshot(video, maxWidth = 480) {
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+/**
  * Euclidean distance between two 128-d descriptors (also used by the
  * attendance matcher later on).
  */
@@ -84,6 +98,7 @@ window.SmartsisFace = {
         const progressDots = container.querySelectorAll('[data-face-progress] [data-dot]');
 
         const samples = [];
+        let snapshot = null;
         let faceVisible = false;
         let busy = false;
 
@@ -178,6 +193,7 @@ window.SmartsisFace = {
                 }
 
                 samples.push(descriptor);
+                snapshot ??= captureSnapshot(video);
                 refreshUi();
 
                 if (samples.length < SAMPLES_NEEDED) {
@@ -188,7 +204,7 @@ window.SmartsisFace = {
 
                 setStatus('Menyimpan data wajah…', 'success');
                 stopCamera();
-                await wire.storeFaceDescriptors(samples);
+                await wire.storeFaceDescriptors(samples, snapshot);
             } catch (error) {
                 console.error('[SmartsisFace]', error);
                 setStatus('Terjadi kesalahan saat memproses wajah. Coba lagi.', 'error');

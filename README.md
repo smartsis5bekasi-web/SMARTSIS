@@ -52,3 +52,20 @@ Aplikasi SMARTSIS **tidak menyediakan** halaman registrasi publik mandiri (Sign 
 * [cite_start]**Manajemen Oleh Super Admin:** Seluruh siklus hidup akun pengguna dikelola melalui "Manajemen Pengguna", di mana hanya Admin yang memiliki hak fungsional untuk menambah, mengubah, menonaktifkan, atau mereset password akun[cite: 618, 620, 622].
 * [cite_start]**Integritas Relasi Data yang Ketat:** Sistem menerapkan pembatasan hak akses yang sangat sensitif (misalnya, Orang Tua hanya dapat melihat data anaknya sendiri [cite: 584][cite_start], Wali Kelas hanya melihat kelasnya [cite: 531][cite_start], Siswa tidak melihat data temannya [cite: 569]). [cite_start]Membuka halaman register publik akan membuka celah keamanan kerahasiaan informasi siswa [cite: 441] [cite_start]dan meningkatkan risiko ketidaksesuaian pemetaan data (RBAC)[cite: 435]. [cite_start]Pembuatan akun terintegrasi langsung saat Admin melakukan input/import master data[cite: 627, 632].
 
+## Login Access
+
+┌───────────────────┬─────────────────────────────────┬──────────┐
+│       Role        │              Email              │ Password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Kepala Sekolah    │ kepala_sekolah@smartsis.test    │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Wakasek Kesiswaan │ wakasek_kesiswaan@smartsis.test │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru BK           │ guru_bk@smartsis.test           │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Wali Kelas        │ wali_kelas@smartsis.test        │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru Piket        │ guru_piket@smartsis.test        │ password │
+├───────────────────┼─────────────────────────────────┼──────────┤
+│ Guru Mapel        │ guru_mapel@smartsis.test        │ password │
+└───────────────────┴─────────────────────────────────┴──────────┘

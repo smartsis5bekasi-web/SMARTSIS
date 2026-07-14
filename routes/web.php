@@ -50,6 +50,15 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('absensi', 'pages::attendance.absensi.index')
                 ->middleware('permission:'.Permission::ViewAttendance->value)
                 ->name('absensi');
+            Route::livewire('absensi/rekap', 'pages::attendance.absensi.recap')
+                ->middleware('permission:'.Permission::ViewAttendance->value)
+                ->name('absensi.recap');
+            Route::livewire('absensi/scan', 'pages::attendance.absensi.scan')
+                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.UserRole::Siswa->value)
+                ->name('absensi.scan');
+            Route::livewire('absensi/pengaturan', 'pages::attendance.absensi.settings')
+                ->middleware('permission:'.Permission::ManageAttendance->value)
+                ->name('absensi.settings');
             Route::livewire('point', 'pages::attendance.point.index')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points');
@@ -68,6 +77,37 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('point/pengaturan', 'pages::attendance.point.settings')
                 ->middleware('permission:'.Permission::ManagePoint->value)
                 ->name('points.settings');
+        });
+
+    Route::prefix('perizinan')
+        ->name('permits.')
+        ->group(function () {
+            Route::livewire('/', 'pages::permit.index')
+                ->middleware('permission:'.Permission::ViewPermit->value)
+                ->name('index');
+            Route::livewire('ajukan', 'pages::permit.create')
+                ->middleware('permission:'.Permission::RequestPermit->value)
+                ->name('create');
+            Route::livewire('{permit}', 'pages::permit.show')
+                ->middleware('permission:'.Permission::ViewPermit->value)
+                ->name('show');
+        });
+
+    Route::prefix('surat-peringatan')
+        ->name('warnings.')
+        ->group(function () {
+            Route::livewire('/', 'pages::warning.index')
+                ->middleware('permission:'.Permission::ViewWarning->value)
+                ->name('index');
+            Route::livewire('pengaturan', 'pages::warning.settings')
+                ->middleware('permission:'.Permission::ManageWarning->value)
+                ->name('settings');
+            Route::livewire('{warningLetter}/cetak', 'pages::warning.print')
+                ->middleware('permission:'.Permission::ViewWarning->value)
+                ->name('print');
+            Route::livewire('{warningLetter}', 'pages::warning.show')
+                ->middleware('permission:'.Permission::ViewWarning->value)
+                ->name('show');
         });
 
     Route::prefix('academic')

@@ -3,6 +3,7 @@
 namespace App\Actions\Point;
 
 use App\Enums\PointType;
+use App\Events\PointBalanceChanged;
 use App\Models\PointLog;
 use App\Models\PointRule;
 use App\Models\Student;
@@ -30,7 +31,7 @@ class ApplyPointAdjustment
         ?string $note = null,
         ?User $by = null,
     ): PointLog {
-        return DB::transaction(function () use ($student, $rule, $source, $note, $by): PointLog {
+        $log = DB::transaction(function () use ($student, $rule, $source, $note, $by): PointLog {
             $student = Student::query()->lockForUpdate()->findOrFail($student->id);
 
             $delta = $rule->signedPoint();
@@ -46,6 +47,12 @@ class ApplyPointAdjustment
                 'created_by' => $by?->id,
             ]);
         });
+
+        // Outside the transaction so listeners (e.g. the SP recommender)
+        // observe the committed balance.
+        PointBalanceChanged::dispatch($log->student, $log);
+
+        return $log;
     }
 
     /**
@@ -54,7 +61,7 @@ class ApplyPointAdjustment
      */
     public function reverse(PointLog $log, ?User $by = null, ?string $note = null): PointLog
     {
-        return DB::transaction(function () use ($log, $by, $note): PointLog {
+        $reversal = DB::transaction(function () use ($log, $by, $note): PointLog {
             $student = Student::query()->lockForUpdate()->findOrFail($log->student_id);
 
             $delta = -$log->delta;
@@ -72,6 +79,10 @@ class ApplyPointAdjustment
                 'created_by' => $by?->id,
             ]);
         });
+
+        PointBalanceChanged::dispatch($reversal->student, $reversal);
+
+        return $reversal;
     }
 
     /**

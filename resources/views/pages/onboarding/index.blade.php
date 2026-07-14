@@ -2,6 +2,7 @@
 
 use App\Enums\UserRole;
 use App\Models\Student;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -31,7 +32,9 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         }
 
         // Resume where the student left off (e.g. closed the tab mid-onboarding).
-        if ($student !== null) {
+        // The NISN step is always completed first, even when the account was
+        // already linked to a student by the admin.
+        if ($student?->hasVerifiedNisn()) {
             $this->nisn = (string) $student->nisn;
             $this->step = $student->hasRegisteredFace() ? 3 : 2;
         }
@@ -76,22 +79,23 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
             return;
         }
 
-        $student->update(['user_id' => $user->id]);
+        $student->update(['user_id' => $user->id, 'nisn_verified_at' => now()]);
         unset($this->student);
 
-        $this->step = 2;
+        $this->step = $student->hasRegisteredFace() ? 3 : 2;
     }
 
     /**
      * Step 2 — persist the face template captured in the browser.
-     * Expects 3 samples of 128-dimension descriptors from face-api.
+     * Expects 3 samples of 128-dimension descriptors from face-api, plus a
+     * JPEG snapshot of the first sample that becomes the profile photo.
      *
      * @param  array<int, array<int, float|int>>  $descriptors
      */
-    public function storeFaceDescriptors(array $descriptors): void
+    public function storeFaceDescriptors(array $descriptors, ?string $snapshot = null): void
     {
         $student = auth()->user()->student;
-        abort_unless($student !== null, 403);
+        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
         $isValid = count($descriptors) === 3 && collect($descriptors)->every(
             fn ($sample): bool => is_array($sample)
@@ -108,10 +112,44 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         $student->update([
             'face_descriptors' => $descriptors,
             'face_registered_at' => now(),
+            ...$this->storeSnapshotAsAvatar($student, $snapshot),
         ]);
         unset($this->student);
 
         $this->step = 3;
+    }
+
+    /**
+     * Save the captured face snapshot as the student's profile photo. The
+     * snapshot is optional; the face template is stored either way.
+     *
+     * @return array{avatar_url?: string}
+     */
+    private function storeSnapshotAsAvatar(Student $student, ?string $snapshot): array
+    {
+        if ($snapshot === null || ! str_starts_with($snapshot, 'data:image/jpeg;base64,')) {
+            return [];
+        }
+
+        $binary = base64_decode(substr($snapshot, strlen('data:image/jpeg;base64,')), true);
+
+        // Reject anything that is not a real, reasonably sized image.
+        if ($binary === false || strlen($binary) > 2 * 1024 * 1024 || @getimagesizefromstring($binary) === false) {
+            return [];
+        }
+
+        $oldPath = $student->avatar_url !== null
+            ? str_replace(Storage::url(''), '', $student->avatar_url)
+            : null;
+
+        $path = 'students/face-'.$student->id.'-'.now()->timestamp.'.jpg';
+        Storage::disk('public')->put($path, $binary);
+
+        if ($oldPath !== null && Storage::disk('public')->exists($oldPath)) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return ['avatar_url' => Storage::url($path)];
     }
 
     /**

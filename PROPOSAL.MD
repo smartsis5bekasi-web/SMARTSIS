@@ -298,23 +298,6 @@ Menggunakan **Role Based Access Control (RBAC)**. Tujuan RBAC: meningkatkan keam
 - Dashboard: dashboard perkembangan siswa.
 - *Batasan:* hanya data anak yang terhubung dengan akun.
 
-### 5.4 Matriks Hak Akses
-
-Legenda: ✔ = Akses penuh/Kelola · ✖ = Tidak ada akses · nilai lain = tingkat akses spesifik.
-
-| Modul | Admin | KS | Wakasis | BK | Walas | Piket | Guru | Siswa | Ortu |
-|---|---|---|---|---|---|---|---|---|---|
-| Master Data | ✔ | ✖ | ✖ | ✖ | ✖ | ✖ | ✖ | ✖ | ✖ |
-| Absensi | ✔ | Lihat | Lihat | Lihat | Lihat | Kelola | Lihat | Lihat | Lihat |
-| Pelanggaran | ✔ | Lihat | Lihat | Kelola | Lihat | Input | Lihat | Lihat | Lihat |
-| Poin | ✔ | Lihat | Lihat | Kelola | Lihat | Lihat | ✖ | Lihat | Lihat |
-| Prestasi | ✔ | Lihat | Lihat | Kelola | Lihat | ✖ | ✖ | Lihat | Lihat |
-| Perizinan | ✔ | Lihat | Lihat | Lihat | Lihat | Kelola | ✖ | Ajukan | Lihat |
-| SP | ✔ | Lihat | Lihat | Kelola | Lihat | ✖ | ✖ | Lihat | Lihat |
-| Dashboard | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-
-> Keterangan kolom: KS = Kepala Sekolah · Wakasis = Wakasek Kesiswaan · BK = Guru BK · Walas = Wali Kelas · Piket = Guru Piket · Guru = Guru Mata Pelajaran.
-
 ### 5.5 Kesimpulan Analisis Pengguna
 SMARTSIS membutuhkan pengelolaan hak akses terstruktur. RBAC menjaga keamanan data, meningkatkan efektivitas, dan mendukung monitoring & pembinaan terintegrasi.
 

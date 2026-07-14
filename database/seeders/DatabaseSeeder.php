@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
             DemoAccountSeeder::class,
             PointSeeder::class,
+            AttendanceSeeder::class,
+            WarningSeeder::class,
         ]);
     }
 }

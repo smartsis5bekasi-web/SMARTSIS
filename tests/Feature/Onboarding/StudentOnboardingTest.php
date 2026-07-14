@@ -3,6 +3,7 @@
 use App\Enums\UserRole;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -15,6 +16,14 @@ beforeEach(function () {
 function fakeFaceDescriptors(): array
 {
     return array_fill(0, 3, array_map(fn (int $i): float => $i / 128, range(1, 128)));
+}
+
+/**
+ * A tiny but valid 1×1 JPEG as the camera snapshot data URL.
+ */
+function fakeFaceSnapshot(): string
+{
+    return 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q==';
 }
 
 test('a siswa who has not onboarded is redirected from the dashboard to onboarding', function () {
@@ -73,7 +82,7 @@ test('the onboarding page redirects an already onboarded siswa to the dashboard'
 
 test('verifying the correct nisn of the linked student advances to the face step', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->create(['user_id' => $user->id, 'nisn' => '0011223344']);
+    $student = Student::factory()->create(['user_id' => $user->id, 'nisn' => '0011223344']);
 
     $this->actingAs($user);
 
@@ -82,6 +91,8 @@ test('verifying the correct nisn of the linked student advances to the face step
         ->call('verifyNisn')
         ->assertHasNoErrors()
         ->assertSet('step', 2);
+
+    expect($student->fresh()->hasVerifiedNisn())->toBeTrue();
 });
 
 test('verifying the nisn of an unclaimed student record links it to the account', function () {
@@ -139,7 +150,7 @@ test('a nisn that does not match the account\'s own student record is rejected',
 
 test('valid face descriptors are stored and advance to the confirmation step', function () {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
 
     $this->actingAs($user);
 
@@ -155,9 +166,60 @@ test('valid face descriptors are stored and advance to the confirmation step', f
         ->and($student->onboarded_at)->toBeNull();
 });
 
+test('the face snapshot is stored as the student profile photo', function () {
+    Storage::fake('public');
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id, 'avatar_url' => null]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors(), fakeFaceSnapshot())
+        ->assertSet('step', 3);
+
+    $student->refresh();
+    expect($student->avatar_url)->not->toBeNull();
+
+    $path = str_replace(Storage::url(''), '', $student->avatar_url);
+    Storage::disk('public')->assertExists($path);
+});
+
+test('an invalid snapshot is ignored while the face template is still stored', function (?string $snapshot) {
+    Storage::fake('public');
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id, 'avatar_url' => null]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors(), $snapshot)
+        ->assertSet('step', 3);
+
+    $student->refresh();
+    expect($student->hasRegisteredFace())->toBeTrue()
+        ->and($student->avatar_url)->toBeNull();
+})->with([
+    'missing snapshot' => [null],
+    'not a data url' => ['hello-world'],
+    'not an image payload' => ['data:image/jpeg;base64,'.base64_encode('not-an-image')],
+]);
+
+test('face registration is rejected before the nisn is verified', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors())
+        ->assertStatus(403);
+});
+
 test('malformed face descriptors are rejected', function (array $descriptors) {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
 
     $this->actingAs($user);
 
@@ -174,7 +236,7 @@ test('malformed face descriptors are rejected', function (array $descriptors) {
 
 test('completing onboarding stamps the student and redirects to the dashboard', function () {
     $user = userWithRole(UserRole::Siswa);
-    $student = Student::factory()->create([
+    $student = Student::factory()->nisnVerified()->create([
         'user_id' => $user->id,
         'face_descriptors' => fakeFaceDescriptors(),
         'face_registered_at' => now(),
@@ -201,9 +263,19 @@ test('onboarding cannot be completed before the face is registered', function ()
         ->assertStatus(403);
 });
 
-test('a linked student without a face resumes at the face step', function () {
+test('a linked student always starts at the nisn step until it is verified', function () {
     $user = userWithRole(UserRole::Siswa);
     Student::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 1);
+});
+
+test('a nisn-verified student without a face resumes at the face step', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
 
     $this->actingAs($user);
 

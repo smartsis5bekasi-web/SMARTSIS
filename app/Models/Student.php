@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $major_id
  * @property int|null $year_in
  * @property int $current_point
+ * @property Carbon|null $nisn_verified_at
  * @property array<int, array<int, float>>|null $face_descriptors
  * @property Carbon|null $face_registered_at
  * @property Carbon|null $onboarded_at
@@ -33,6 +34,17 @@ class Student extends Model
 {
     /** @use HasFactory<StudentFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        // New students start with the admin-configured initial point (F-12)
+        // unless a balance is provided explicitly (e.g. imports, factories).
+        static::creating(function (Student $student): void {
+            if ($student->getAttribute('current_point') === null) {
+                $student->current_point = PointSetting::current()->initial_point;
+            }
+        });
+    }
 
     protected $fillable = [
         'user_id',
@@ -48,6 +60,7 @@ class Student extends Model
         'major_id',
         'year_in',
         'current_point',
+        'nisn_verified_at',
         'face_descriptors',
         'face_registered_at',
         'onboarded_at',
@@ -60,6 +73,14 @@ class Student extends Model
     public function hasCompletedOnboarding(): bool
     {
         return $this->onboarded_at !== null;
+    }
+
+    /**
+     * Whether the student has confirmed their NISN during onboarding.
+     */
+    public function hasVerifiedNisn(): bool
+    {
+        return $this->nisn_verified_at !== null;
     }
 
     /**
@@ -141,6 +162,30 @@ class Student extends Model
     }
 
     /**
+     * @return HasMany<Attendance, $this>
+     */
+    public function attendances(): HasMany
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
+    /**
+     * @return HasMany<Permit, $this>
+     */
+    public function permits(): HasMany
+    {
+        return $this->hasMany(Permit::class);
+    }
+
+    /**
+     * @return HasMany<WarningLetter, $this>
+     */
+    public function warningLetters(): HasMany
+    {
+        return $this->hasMany(WarningLetter::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -149,6 +194,7 @@ class Student extends Model
             'birth_date' => 'date',
             'current_point' => 'integer',
             'year_in' => 'integer',
+            'nisn_verified_at' => 'datetime',
             'face_descriptors' => 'array',
             'face_registered_at' => 'datetime',
             'onboarded_at' => 'datetime',
