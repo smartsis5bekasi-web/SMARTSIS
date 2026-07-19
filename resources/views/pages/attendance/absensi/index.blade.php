@@ -3,9 +3,13 @@
 use App\Actions\Attendance\RecordAttendance;
 use App\Enums\AttendanceStatus;
 use App\Enums\Permission;
+use App\Enums\PermitType;
 use App\Enums\UserRole;
+use App\Exceptions\AttendanceException;
 use App\Models\Attendance;
+use App\Models\AttendanceSetting;
 use App\Models\Classroom;
+use App\Models\Permit;
 use App\Models\Student;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -34,6 +38,13 @@ new #[Title('Absensi')] class extends Component {
 
     public ?int $childId = null;
 
+    /**
+     * Outcome of the last self-service scan, rendered as the result card.
+     *
+     * @var array{ok: bool, status: string, time: string, message: string}|null
+     */
+    public ?array $lastResult = null;
+
     public function mount(): void
     {
         $this->date = now()->toDateString();
@@ -60,6 +71,131 @@ new #[Title('Absensi')] class extends Component {
     public function canManage(): bool
     {
         return auth()->user()->can(Permission::ManageAttendance->value);
+    }
+
+    /**
+     * A siswa records their own attendance from this page via the embedded
+     * face scan; every other role only monitors or reads history.
+     */
+    public function isSelfService(): bool
+    {
+        return auth()->user()->primaryRole() === UserRole::Siswa
+            && auth()->user()->student !== null;
+    }
+
+    #[Computed]
+    public function setting(): AttendanceSetting
+    {
+        return AttendanceSetting::current();
+    }
+
+    /**
+     * Today's attendance record of the signed-in siswa (self-service view).
+     */
+    #[Computed]
+    public function todayAttendance(): ?Attendance
+    {
+        return auth()->user()->student?->attendances()->onDate(now())->first();
+    }
+
+    /**
+     * The next scan step for the signed-in siswa: absensi masuk always comes
+     * first — absensi pulang only unlocks after check-in is recorded. Null
+     * when the day is complete or already covered by izin/sakit/alpha.
+     */
+    public function nextScanStep(): ?string
+    {
+        if (! $this->isSelfService()) {
+            return null;
+        }
+
+        $attendance = $this->todayAttendance;
+
+        if ($attendance === null) {
+            return 'masuk';
+        }
+
+        if ($attendance->status->isPresent() && ! $attendance->isCheckedOut()) {
+            return 'pulang';
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the camera should run right now: check-in any time, check-out
+     * only once the window opens (or an approved izin pulang awal).
+     */
+    public function isScannerOpen(): bool
+    {
+        return match ($this->nextScanStep()) {
+            'masuk' => true,
+            'pulang' => $this->setting->isCheckOutOpen(now())
+                || Permit::approvedFor(auth()->user()->student, PermitType::PulangAwal, now()),
+            default => false,
+        };
+    }
+
+    /**
+     * The signed-in siswa's own face template(s) handed to the browser
+     * matcher (1:1) — other students' templates never reach a siswa's
+     * browser.
+     *
+     * @return array<int, array{id: int, name: string, descriptors: array<int, array<int, float>>}>
+     */
+    #[Computed]
+    public function faceStudents(): array
+    {
+        return Student::query()
+            ->whereNotNull('face_descriptors')
+            ->whereKey(auth()->user()->student?->id ?? 0)
+            ->get(['id', 'name', 'face_descriptors'])
+            ->map(fn (Student $student): array => [
+                'id' => $student->id,
+                'name' => $student->name,
+                'descriptors' => $student->face_descriptors,
+            ])
+            ->all();
+    }
+
+    /**
+     * Record the signed-in siswa's attendance after the blink challenge.
+     * The step is decided server-side from today's record (check-in first,
+     * then check-out) and the student id is pinned to the signed-in siswa,
+     * so a tampered call can neither skip check-in nor record for someone
+     * else.
+     */
+    public function record(int $studentId): void
+    {
+        abort_unless($this->isSelfService(), 403);
+
+        $student = auth()->user()->student;
+        $engine = app(RecordAttendance::class);
+        $checkingOut = $this->todayAttendance !== null;
+
+        try {
+            $attendance = $checkingOut
+                ? $engine->checkOut($student, auth()->user())
+                : $engine->checkIn($student, auth()->user());
+
+            $this->lastResult = [
+                'ok' => true,
+                'status' => $attendance->status->label(),
+                'time' => now()->format('H:i'),
+                'message' => $checkingOut
+                    ? __('Absensi pulang tercatat.')
+                    : __('Absensi masuk tercatat: :status.', ['status' => $attendance->status->label()]),
+            ];
+        } catch (AttendanceException $exception) {
+            $this->lastResult = [
+                'ok' => false,
+                'status' => '—',
+                'time' => now()->format('H:i'),
+                'message' => $exception->getMessage(),
+            ];
+        }
+
+        unset($this->todayAttendance, $this->history);
     }
 
     /**
@@ -251,7 +387,9 @@ new #[Title('Absensi')] class extends Component {
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Absensi')"
-        :subtitle="$this->isPersonal() ? __('Riwayat kehadiran.') : __('Monitoring kehadiran siswa harian.')">
+        :subtitle="$this->isSelfService()
+            ? __('Scan wajah untuk absensi dan lihat riwayat kehadiran Anda.')
+            : ($this->isPersonal() ? __('Riwayat kehadiran.') : __('Monitoring kehadiran siswa harian.'))">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="stats-chart-outline" :href="route('attendance.absensi.recap')" wire:navigate>
                 {{ __('Rekap') }}
@@ -268,6 +406,128 @@ new #[Title('Absensi')] class extends Component {
     </x-ui.page-header>
 
     @if ($this->isPersonal())
+        @if ($this->isSelfService())
+            {{-- ============ Self-service face scan (Siswa) ============ --}}
+            @vite('resources/js/face-attendance.js')
+            @php($step = $this->nextScanStep())
+            @php($attendance = $this->todayAttendance)
+
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-5">
+                <div class="flex flex-col rounded-xl bg-white p-6 drop-shadow-lg lg:col-span-3">
+                    {{-- Step indicator: masuk always precedes pulang. --}}
+                    <div class="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+                        <div @class([
+                            'flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold',
+                            'bg-primary-600 text-white shadow' => $step === 'masuk',
+                            'bg-green-100 text-green-700' => $attendance?->checked_in_at !== null,
+                            'text-gray-500' => $step !== 'masuk' && $attendance?->checked_in_at === null,
+                        ])>
+                            <ion-icon name="{{ $attendance?->checked_in_at !== null ? 'checkmark-circle-outline' : 'log-in-outline' }}" class="text-lg"></ion-icon>
+                            {{ __('Absensi Masuk') }}
+                            @if ($attendance?->checked_in_at !== null)
+                                <span class="tabular-nums">{{ $attendance->checked_in_at->format('H:i') }}</span>
+                            @endif
+                        </div>
+                        <div @class([
+                            'flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold',
+                            'bg-primary-600 text-white shadow' => $step === 'pulang',
+                            'bg-green-100 text-green-700' => $attendance?->checked_out_at !== null,
+                            'text-gray-400' => $step !== 'pulang' && $attendance?->checked_out_at === null,
+                        ])>
+                            <ion-icon name="{{ $attendance?->checked_out_at !== null ? 'checkmark-circle-outline' : ($step === 'pulang' ? 'log-out-outline' : 'lock-closed-outline') }}" class="text-lg"></ion-icon>
+                            {{ __('Absensi Pulang') }}
+                            @if ($attendance?->checked_out_at !== null)
+                                <span class="tabular-nums">{{ $attendance->checked_out_at->format('H:i') }}</span>
+                            @endif
+                        </div>
+                    </div>
+
+                    @if ($this->isScannerOpen())
+                        <div wire:ignore x-data
+                            x-init="window.SmartsisAttendance.start($el, $wire, { students: {{ Js::from($this->faceStudents) }} })"
+                            class="flex flex-col">
+                            <div class="relative overflow-hidden rounded-2xl border-2 border-dashed border-primary-400 bg-gray-900">
+                                <video data-face-video playsinline muted autoplay class="aspect-[4/3] w-full -scale-x-100 object-cover"></video>
+                                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                    <div class="h-3/4 w-1/2 rounded-[50%] border-2 border-white/60"></div>
+                                </div>
+                            </div>
+
+                            <p data-face-status class="mt-4 min-h-6 text-center text-sm text-gray-500">{{ __('Menyiapkan kamera…') }}</p>
+                        </div>
+                    @else
+                        <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-300 bg-gray-50 py-14 text-center">
+                            @if ($step === 'pulang')
+                                <ion-icon name="time-outline" class="text-4xl text-gray-400"></ion-icon>
+                                <p class="text-sm font-medium text-gray-600">
+                                    {{ __('Absensi masuk sudah tercatat. Absensi pulang dibuka pukul :time.', ['time' => substr($this->setting->check_out_after, 0, 5)]) }}
+                                </p>
+                            @elseif ($attendance?->isCheckedOut())
+                                <ion-icon name="checkmark-done-circle-outline" class="text-4xl text-green-500"></ion-icon>
+                                <p class="text-sm font-medium text-gray-600">{{ __('Absensi hari ini sudah selesai. Sampai jumpa besok!') }}</p>
+                            @else
+                                <x-attendance.status-badge :status="$attendance->status" />
+                                <p class="text-sm font-medium text-gray-600">
+                                    {{ __('Kehadiran hari ini tercatat sebagai :status.', ['status' => $attendance->status->label()]) }}
+                                </p>
+                            @endif
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Result card + schedule info. --}}
+                <div class="flex flex-col gap-6 lg:col-span-2">
+                    <div class="rounded-xl bg-white p-6 drop-shadow-lg">
+                        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Hasil Terakhir') }}</p>
+
+                        @if ($lastResult === null)
+                            <div class="flex flex-col items-center gap-2 py-10 text-gray-400">
+                                <ion-icon name="scan-outline" class="text-4xl"></ion-icon>
+                                <span class="text-sm">{{ __('Belum ada scan pada sesi ini.') }}</span>
+                            </div>
+                        @else
+                            <div class="mt-4 flex items-center gap-4">
+                                <img class="h-16 w-16 rounded-2xl object-cover"
+                                    src="{{ auth()->user()->student->avatar_url ?? asset('assets/placeholder.png') }}"
+                                    alt="{{ auth()->user()->student->name }}" />
+                                <div class="flex flex-col">
+                                    <span class="font-bold text-gray-800">{{ auth()->user()->student->name }}</span>
+                                    <span class="text-sm text-gray-500">{{ auth()->user()->student->classroom?->name ?? '—' }}</span>
+                                    <span class="text-sm text-gray-500">{{ $lastResult['time'] }} WIB</span>
+                                </div>
+                            </div>
+
+                            <div @class([
+                                'mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm font-medium',
+                                'bg-green-50 text-green-700' => $lastResult['ok'],
+                                'bg-red-50 text-red-700' => ! $lastResult['ok'],
+                            ])>
+                                <ion-icon name="{{ $lastResult['ok'] ? 'checkmark-circle-outline' : 'alert-circle-outline' }}" class="mt-0.5 shrink-0 text-lg"></ion-icon>
+                                <span>{{ $lastResult['message'] }}</span>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="rounded-xl bg-white p-6 drop-shadow-lg">
+                        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Jadwal Absensi') }}</p>
+                        <dl class="mt-4 flex flex-col gap-3 text-sm">
+                            <div class="flex items-center justify-between">
+                                <dt class="text-gray-500">{{ __('Terlambat setelah') }}</dt>
+                                <dd class="font-semibold text-gray-800">{{ substr($this->setting->late_after, 0, 5) }}</dd>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <dt class="text-gray-500">{{ __('Absensi pulang mulai') }}</dt>
+                                <dd class="font-semibold text-gray-800">{{ substr($this->setting->check_out_after, 0, 5) }}</dd>
+                            </div>
+                        </dl>
+                        <p class="mt-4 text-xs text-gray-500">
+                            {{ __('Absensi pulang hanya dapat dilakukan setelah absensi masuk tercatat.') }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         {{-- ============ Personal history (Siswa / Orang Tua) ============ --}}
         <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
             <div class="mb-4 flex flex-wrap items-center gap-3">

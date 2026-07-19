@@ -60,7 +60,7 @@ new #[Title('Detail Pelanggaran')] class extends Component {
 
         $this->violation->approve(auth()->user());
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pelanggaran disetujui, poin dikurangi.')]);
+        toast(__('Pelanggaran disetujui, poin dikurangi.'), 'success');
 
         $this->redirectRoute('academic.violations', navigate: true);
     }
@@ -73,7 +73,7 @@ new #[Title('Detail Pelanggaran')] class extends Component {
 
         $this->violation->reject(auth()->user(), $this->note);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pelanggaran ditolak.')]);
+        toast(__('Pelanggaran ditolak.'), 'success');
 
         $this->redirectRoute('academic.violations', navigate: true);
     }
@@ -107,7 +107,7 @@ new #[Title('Detail Pelanggaran')] class extends Component {
 
         $this->violation->delete();
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pelanggaran dihapus.')]);
+        toast(__('Pelanggaran dihapus.'), 'success');
 
         $this->redirectRoute('academic.violations', navigate: true);
     }

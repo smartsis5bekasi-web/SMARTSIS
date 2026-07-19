@@ -28,15 +28,10 @@
                         <div class="flex flex-col gap-1">
                             <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Kehadiran') }}</p>
                             @can(\App\Enums\Permission::ViewAttendance->value)
-                                <x-ui.sidebar-item icon="checkbox-outline" :href="route('attendance.absensi')" :active="request()->routeIs('attendance.absensi*') && ! request()->routeIs('attendance.absensi.scan')">
+                                <x-ui.sidebar-item icon="checkbox-outline" :href="route('attendance.absensi')" :active="request()->routeIs('attendance.absensi*')">
                                     {{ __('Absensi') }}
                                 </x-ui.sidebar-item>
                             @endcan
-                            @if (auth()->user()->can(\App\Enums\Permission::ManageAttendance->value) || auth()->user()->hasRole(\App\Enums\UserRole::Siswa->value))
-                                <x-ui.sidebar-item icon="scan-outline" :href="route('attendance.absensi.scan')" :active="request()->routeIs('attendance.absensi.scan')">
-                                    {{ __('Scan Absensi') }}
-                                </x-ui.sidebar-item>
-                            @endif
                             @can(\App\Enums\Permission::ViewPoint->value)
                                 <x-ui.sidebar-item icon="star-outline" :href="route('attendance.points')" :active="request()->routeIs('attendance.points*')">
                                     {{ __('Point') }}
@@ -159,21 +154,8 @@
             </flux:toast.group>
         @endpersist
 
-        {{-- Bridge a redirect's session flash to a SweetAlert toast (see UI_STANDARDS.md). --}}
-        @if (session()->has('swal'))
-            <script>
-                (function () {
-                    var fire = function () {
-                        window.dispatchEvent(new CustomEvent('swal', { detail: @json(session('swal')) }));
-                    };
-                    if (window.Swal) {
-                        fire();
-                    } else {
-                        window.addEventListener('load', fire, { once: true });
-                    }
-                })();
-            </script>
-        @endif
+        {{-- Renders alerts flashed via realrashid/sweet-alert's toast()/alert() helpers (see UI_STANDARDS.md). --}}
+        @include('sweetalert::alert')
 
         @fluxScripts
     </body>

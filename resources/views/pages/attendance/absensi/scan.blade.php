@@ -1,7 +1,7 @@
 <?php
 
 use App\Actions\Attendance\RecordAttendance;
-use App\Enums\UserRole;
+use App\Enums\Permission;
 use App\Exceptions\AttendanceException;
 use App\Models\AttendanceSetting;
 use App\Models\Student;
@@ -22,6 +22,14 @@ new #[Title('Scan Absensi')] class extends Component {
 
     public function mount(): void
     {
+        // The staffed kiosk lives here; a siswa self-scans from the Absensi
+        // page, so old bookmarks land on the unified page instead of a 403.
+        if (! auth()->user()->can(Permission::ManageAttendance->value)) {
+            $this->redirectRoute('attendance.absensi', navigate: true);
+
+            return;
+        }
+
         // Default to check-out mode once the check-out window is open.
         if ($this->setting()->isCheckOutOpen(now())) {
             $this->mode = 'pulang';
@@ -35,20 +43,8 @@ new #[Title('Scan Absensi')] class extends Component {
     }
 
     /**
-     * A siswa self-serving the kiosk from their own account only ever
-     * verifies against their own face — a shared device staffed by a Guru
-     * Piket still identifies from every registered student (1:N).
-     */
-    public function isSelfService(): bool
-    {
-        return auth()->user()->primaryRole() === UserRole::Siswa;
-    }
-
-    /**
-     * Registered face template(s) handed to the browser matcher: every
-     * student for the staffed kiosk (1:N), or just the signed-in siswa's own
-     * template for self check-in/out (1:1) so other students' templates
-     * never reach a siswa's browser.
+     * Every registered face template, handed to the browser matcher (1:N)
+     * for the shared kiosk staffed by a Guru Piket / Super Admin.
      *
      * @return array<int, array{id: int, name: string, descriptors: array<int, array<int, float>>}>
      */
@@ -57,7 +53,6 @@ new #[Title('Scan Absensi')] class extends Component {
     {
         return Student::query()
             ->whereNotNull('face_descriptors')
-            ->when($this->isSelfService(), fn ($query) => $query->whereKey(auth()->user()->student?->id ?? 0))
             ->get(['id', 'name', 'face_descriptors'])
             ->map(fn (Student $student): array => [
                 'id' => $student->id,
@@ -77,19 +72,12 @@ new #[Title('Scan Absensi')] class extends Component {
 
     /**
      * Record the matched student's attendance after the blink challenge.
-     *
-     * In self-service mode the matched id is trusted from the browser only
-     * as far as the face matcher's own template set goes (see
-     * {@see faceStudents()}); the student id is still pinned server-side to
-     * the signed-in siswa so a tampered call can never record for someone
-     * else.
+     * Check-out for a student who has not checked in is rejected by the
+     * engine ({@see RecordAttendance::checkOut}) and surfaces as an error
+     * card.
      */
     public function record(int $studentId): void
     {
-        if ($this->isSelfService()) {
-            $studentId = auth()->user()->student?->id ?? 0;
-        }
-
         $student = Student::query()->with('classroom')->findOrFail($studentId);
         $recorder = auth()->user();
         $engine = app(RecordAttendance::class);
@@ -128,9 +116,7 @@ new #[Title('Scan Absensi')] class extends Component {
     @vite('resources/js/face-attendance.js')
 
     <x-ui.page-header :title="__('Scan Absensi')"
-        :subtitle="$this->isSelfService()
-            ? __('Posisikan wajah Anda ke kamera, lalu kedipkan mata untuk konfirmasi.')
-            : __('Arahkan wajah siswa ke kamera, lalu kedipkan mata untuk konfirmasi.')">
+        :subtitle="__('Arahkan wajah siswa ke kamera, lalu kedipkan mata untuk konfirmasi.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="list-outline" :href="route('attendance.absensi')" wire:navigate>
                 {{ __('Monitoring') }}

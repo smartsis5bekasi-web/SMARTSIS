@@ -171,7 +171,7 @@ new #[Title('Edit Siswa')] class extends Component {
         $this->student->update($data);
         $this->syncParents($parentRows);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa diperbarui.')]);
+        toast(__('Siswa diperbarui.'), 'success');
 
         $this->redirectRoute('master-data.students.index', navigate: true);
     }

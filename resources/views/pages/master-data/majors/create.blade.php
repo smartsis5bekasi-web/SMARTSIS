@@ -27,7 +27,7 @@ new #[Title('Tambah Jurusan')] class extends Component {
 
         Major::create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Jurusan ditambahkan.')]);
+        toast(__('Jurusan ditambahkan.'), 'success');
 
         $this->redirectRoute('master-data.majors', navigate: true);
     }

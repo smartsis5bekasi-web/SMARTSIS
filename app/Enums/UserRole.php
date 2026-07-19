@@ -47,4 +47,21 @@ enum UserRole: string
     {
         return array_map(fn (self $role): string => $role->value, self::cases());
     }
+
+    /**
+     * Roles a teacher account may hold.
+     *
+     * @return array<int, self>
+     */
+    public static function teacherRoles(): array
+    {
+        return [
+            self::KepalaSekolah,
+            self::WakasekKesiswaan,
+            self::GuruBk,
+            self::WaliKelas,
+            self::GuruPiket,
+            self::GuruMapel,
+        ];
+    }
 }

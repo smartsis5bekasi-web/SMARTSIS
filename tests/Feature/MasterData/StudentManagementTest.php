@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Classroom;
+use App\Models\Major;
 use App\Models\ParentGuardian;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
@@ -203,4 +204,84 @@ test('a detached parent with an account or other children is kept', function () 
     $this->assertDatabaseHas('parents', ['id' => $withAccount->id]);
     $this->assertDatabaseHas('parents', ['id' => $sharedParent->id]);
     expect($sibling->parents()->count())->toBe(1);
+});
+
+test('export downloads an xlsx of the siswa data', function () {
+    Student::factory()->create(['name' => 'Ahmad']);
+
+    Livewire::test('pages::master-data.students.index')
+        ->call('export')
+        ->assertFileDownloaded('data-siswa-'.now()->format('Y-m-d').'.xlsx');
+});
+
+test('the siswa import template can be downloaded from the modal', function () {
+    Livewire::test('pages::master-data.students.index')
+        ->call('downloadTemplate')
+        ->assertFileDownloaded('template-import-siswa.xlsx');
+});
+
+test('importing a valid csv creates students with relations and parents', function () {
+    $classroom = Classroom::factory()->create(['name' => 'X IPA 1']);
+    $major = Major::factory()->create(['name' => 'IPA']);
+
+    $csv = implode("\n", [
+        'nama;nis;nisn;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
+        'Ahmad Fauzi;2024001;0051234567;L;2008-03-15;Jl. Merdeka No. 1;X IPA 1;IPA;Budi Fauzi;Ayah;081234567890',
+        'Dewi Lestari;2024002;;Perempuan;;;x ipa 1;;;;',
+    ]);
+
+    Livewire::test('pages::master-data.students.index')
+        ->call('openImportModal')
+        ->set('importFile', UploadedFile::fake()->createWithContent('siswa.csv', $csv))
+        ->call('import')
+        ->assertHasNoErrors()
+        ->assertSet('showImportModal', false)
+        ->assertSet('importErrors', []);
+
+    $this->assertDatabaseHas('students', [
+        'name' => 'Ahmad Fauzi',
+        'nis' => '2024001',
+        'nisn' => '0051234567',
+        'gender' => 'L',
+        'classroom_id' => $classroom->id,
+        'major_id' => $major->id,
+    ]);
+    $this->assertDatabaseHas('students', [
+        'name' => 'Dewi Lestari',
+        'nis' => '2024002',
+        'gender' => 'P',
+        'classroom_id' => $classroom->id,
+        'major_id' => null,
+    ]);
+
+    $ahmad = Student::where('nis', '2024001')->first();
+    $parent = $ahmad->parents()->first();
+
+    expect($parent)->not->toBeNull()
+        ->and($parent->name)->toBe('Budi Fauzi')
+        ->and($parent->pivot->relationship)->toBe('Ayah')
+        ->and($parent->phone)->toBe('081234567890');
+
+    expect(Student::where('nis', '2024002')->first()->parents()->count())->toBe(0);
+});
+
+test('siswa import rejects unknown kelas and duplicate nis, creating nothing', function () {
+    Classroom::factory()->create(['name' => 'X IPA 1']);
+    Student::factory()->create(['nis' => '2024001']);
+
+    $csv = implode("\n", [
+        'nama;nis;nisn;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
+        'Valid Siswa;2024009;;;;;X IPA 1;;;;',
+        'Dupe Nis;2024001;;;;;X IPA 1;;;;',
+        'Kelas Salah;2024010;;;;;XII Tidak Ada;;;;',
+    ]);
+
+    $component = Livewire::test('pages::master-data.students.index')
+        ->set('importFile', UploadedFile::fake()->createWithContent('siswa.csv', $csv))
+        ->call('import');
+
+    expect($component->get('importErrors'))->toHaveCount(2);
+
+    $this->assertDatabaseMissing('students', ['nis' => '2024009']);
+    $this->assertDatabaseMissing('students', ['nis' => '2024010']);
 });

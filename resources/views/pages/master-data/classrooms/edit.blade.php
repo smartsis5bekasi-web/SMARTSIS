@@ -81,7 +81,7 @@ new #[Title('Edit Kelas')] class extends Component {
 
         $this->classroom->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Kelas diperbarui.')]);
+        toast(__('Kelas diperbarui.'), 'success');
 
         $this->redirectRoute('master-data.classrooms', navigate: true);
     }

@@ -75,7 +75,7 @@ new #[Title('Edit Pelanggaran')] class extends Component {
 
         $this->violation->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pelanggaran diperbarui.')]);
+        toast(__('Pelanggaran diperbarui.'), 'success');
 
         $this->redirectRoute('academic.violations', navigate: true);
     }

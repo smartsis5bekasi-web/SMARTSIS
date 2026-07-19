@@ -162,7 +162,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
         $student->update(['onboarded_at' => now()]);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Selamat datang di SMARTSIS!')]);
+        toast(__('Selamat datang di SMARTSIS!'), 'success');
 
         $this->redirectRoute('dashboard', navigate: true);
     }

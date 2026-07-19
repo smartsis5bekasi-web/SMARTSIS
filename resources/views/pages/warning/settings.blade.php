@@ -43,12 +43,9 @@ new #[Title('Pengaturan Surat Peringatan')] class extends Component {
         // Thresholds changed — re-detect immediately so BK sees the impact.
         $created = app(EvaluateWarningRecommendation::class)->sweep();
 
-        session()->flash('swal', [
-            'icon' => 'success',
-            'title' => $created > 0
-                ? __('Pengaturan disimpan; :count rekomendasi SP baru ditemukan.', ['count' => $created])
-                : __('Pengaturan SP disimpan.'),
-        ]);
+        toast($created > 0
+            ? __('Pengaturan disimpan; :count rekomendasi SP baru ditemukan.', ['count' => $created])
+            : __('Pengaturan SP disimpan.'), 'success');
 
         $this->redirectRoute('warnings.index', navigate: true);
     }

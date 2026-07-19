@@ -30,7 +30,7 @@ new #[Title('Detail Surat Peringatan')] class extends Component {
 
         $this->warningLetter->approve(auth()->user(), $this->note !== '' ? $this->note : null);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Surat peringatan diterbitkan.')]);
+        toast(__('Surat peringatan diterbitkan.'), 'success');
 
         $this->redirectRoute('warnings.show', $this->warningLetter, navigate: true);
     }
@@ -47,7 +47,7 @@ new #[Title('Detail Surat Peringatan')] class extends Component {
 
         $this->warningLetter->reject(auth()->user(), $this->note);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Rekomendasi SP ditolak.')]);
+        toast(__('Rekomendasi SP ditolak.'), 'success');
 
         $this->redirectRoute('warnings.index', navigate: true);
     }

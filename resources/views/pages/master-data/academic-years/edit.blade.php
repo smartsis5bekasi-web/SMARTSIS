@@ -40,7 +40,7 @@ new #[Title('Edit Tahun Ajaran')] class extends Component {
 
         $this->year->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Tahun ajaran diperbarui.')]);
+        toast(__('Tahun ajaran diperbarui.'), 'success');
 
         $this->redirectRoute('master-data.academic-years', navigate: true);
     }

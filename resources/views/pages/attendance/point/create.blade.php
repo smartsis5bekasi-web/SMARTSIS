@@ -70,7 +70,7 @@ new #[Title('Tambah Aturan Poin')] class extends Component {
 
         PointRule::create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Aturan poin ditambahkan.')]);
+        toast(__('Aturan poin ditambahkan.'), 'success');
 
         $this->redirectRoute('attendance.points', navigate: true);
     }

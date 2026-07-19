@@ -30,7 +30,7 @@ test('the recap page is available to attendance viewers', function () {
         ->assertOk();
 });
 
-test('attendance managers and the siswa themself can open the scan kiosk', function () {
+test('only attendance managers keep the scan kiosk; a siswa is sent to the unified absensi page', function () {
     $this->actingAs(userWithRole(UserRole::GuruPiket))
         ->get(route('attendance.absensi.scan'))
         ->assertOk();
@@ -44,7 +44,7 @@ test('attendance managers and the siswa themself can open the scan kiosk', funct
 
     $this->actingAs($siswa)
         ->get(route('attendance.absensi.scan'))
-        ->assertOk();
+        ->assertRedirect(route('attendance.absensi'));
 });
 
 test('a siswa self-scanning only ever sees and records their own face template', function () {
@@ -54,7 +54,7 @@ test('a siswa self-scanning only ever sees and records their own face template',
 
     $this->actingAs($siswa);
 
-    $component = Livewire::test('pages::attendance.absensi.scan');
+    $component = Livewire::test('pages::attendance.absensi.index');
 
     expect($component->get('faceStudents'))->toHaveCount(1)
         ->and($component->get('faceStudents')[0]['id'])->toBe($own->id);
@@ -62,10 +62,30 @@ test('a siswa self-scanning only ever sees and records their own face template',
     // Even if the browser payload is tampered with to pass another
     // student's id, the server pins the recorded student to the siswa's own
     // linked record.
-    $component->call('setMode', 'masuk')->call('record', $other->id);
+    $component->call('record', $other->id);
 
     expect($own->attendances()->count())->toBe(1)
         ->and($other->attendances()->count())->toBe(0);
+});
+
+test('a siswa cannot record absensi pulang before absensi masuk', function () {
+    $siswa = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->onboarded()->create(['user_id' => $siswa->id]);
+
+    $this->actingAs($siswa);
+
+    $component = Livewire::test('pages::attendance.absensi.index');
+
+    // Before check-in the only available step is masuk — the first scan
+    // records check-in, never check-out.
+    $component->call('record', $student->id);
+
+    expect($component->get('lastResult')['ok'])->toBeTrue();
+
+    $attendance = $student->attendances()->first();
+
+    expect($attendance->checked_in_at)->not->toBeNull()
+        ->and($attendance->checked_out_at)->toBeNull();
 });
 
 test('only attendance managers can open the settings page', function () {
@@ -86,7 +106,7 @@ test('a siswa sees their personal attendance history', function () {
     $this->actingAs($siswa)
         ->get(route('attendance.absensi'))
         ->assertOk()
-        ->assertSee('Riwayat kehadiran')
+        ->assertSee('riwayat kehadiran Anda')
         ->assertSee('Terlambat');
 });
 

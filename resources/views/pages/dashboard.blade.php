@@ -1,12 +1,25 @@
 <?php
 
+use App\Enums\AttendanceStatus;
+use App\Enums\Permission;
+use App\Enums\PermitStatus;
+use App\Enums\PointApprovalStatus;
+use App\Enums\PointType;
 use App\Enums\UserRole;
+use App\Enums\WarningLevel;
+use App\Enums\WarningStatus;
 use App\Models\AcademicYear;
+use App\Models\Achievement;
+use App\Models\Attendance;
 use App\Models\Classroom;
 use App\Models\ParentGuardian;
+use App\Models\Permit;
+use App\Models\PointLog;
 use App\Models\PointSetting;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Models\Violation;
+use App\Models\WarningLetter;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -136,6 +149,260 @@ new #[Title('Dashboard')] class extends Component
     public function children(): Collection
     {
         return auth()->user()->parentGuardian?->students()->with('classroom')->get() ?? new Collection;
+    }
+
+    /**
+     * Daily present count (hadir + terlambat) for each day of the current
+     * month up to today — the "jumlah absen harian" trend chart.
+     *
+     * @return array<int, array{label: string, value: int}>
+     */
+    #[Computed]
+    public function attendanceTrend(): array
+    {
+        $start = now()->startOfMonth();
+        $today = now()->startOfDay();
+        $studentIds = $this->scopedStudentIds();
+
+        $counts = Attendance::query()
+            ->whereIn('status', [AttendanceStatus::Hadir, AttendanceStatus::Terlambat])
+            ->whereBetween('date', [$start->toDateString(), $today->toDateString()])
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->selectRaw('date, COUNT(*) as total')
+            ->groupBy('date')
+            ->pluck('total', 'date');
+
+        $days = [];
+
+        for ($date = $start->copy(); $date->lte($today); $date = $date->addDay()) {
+            $days[] = [
+                'label' => $date->format('j'),
+                'value' => (int) ($counts[$date->toDateString()] ?? 0),
+            ];
+        }
+
+        return $days;
+    }
+
+    /**
+     * Attendance status mix (hadir/terlambat/izin/sakit/alpha) for the
+     * current month.
+     *
+     * @return array<int, array{label: string, value: int, color: string}>
+     */
+    #[Computed]
+    public function attendanceStatusBreakdown(): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        $counts = Attendance::query()
+            ->whereBetween('date', [now()->startOfMonth()->toDateString(), now()->toDateString()])
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $colors = [
+            AttendanceStatus::Hadir->value => 'bg-green-500',
+            AttendanceStatus::Terlambat->value => 'bg-amber-500',
+            AttendanceStatus::Izin->value => 'bg-blue-500',
+            AttendanceStatus::Sakit->value => 'bg-purple-500',
+            AttendanceStatus::Alpha->value => 'bg-red-500',
+        ];
+
+        return collect(AttendanceStatus::cases())
+            ->map(fn (AttendanceStatus $status) => [
+                'label' => $status->label(),
+                'value' => (int) ($counts[$status->value] ?? 0),
+                'color' => $colors[$status->value],
+            ])
+            ->all();
+    }
+
+    /**
+     * The 5 most-recorded violation categories (approved) this month.
+     *
+     * @return array<int, array{label: string, value: int, color: string}>
+     */
+    #[Computed]
+    public function violationBreakdown(): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        return Violation::query()
+            ->where('violations.status', PointApprovalStatus::Approved)
+            ->whereBetween('occurred_on', [now()->startOfMonth()->toDateString(), now()->toDateString()])
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('violations.student_id', $studentIds))
+            ->join('point_rules', 'point_rules.id', '=', 'violations.point_rule_id')
+            ->selectRaw('point_rules.name as label, COUNT(*) as value')
+            ->groupBy('point_rules.name')
+            ->orderByDesc('value')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => ['label' => $row->label, 'value' => (int) $row->value, 'color' => 'bg-red-400'])
+            ->all();
+    }
+
+    /**
+     * Approved achievements this month, grouped by level.
+     *
+     * @return array<int, array{label: string, value: int, color: string}>
+     */
+    #[Computed]
+    public function achievementBreakdown(): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        return Achievement::query()
+            ->where('status', PointApprovalStatus::Approved)
+            ->whereBetween('achieved_on', [now()->startOfMonth()->toDateString(), now()->toDateString()])
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->whereNotNull('level')
+            ->selectRaw('level as label, COUNT(*) as value')
+            ->groupBy('level')
+            ->orderByDesc('value')
+            ->get()
+            ->map(fn ($row) => ['label' => $row->label, 'value' => (int) $row->value, 'color' => 'bg-green-400'])
+            ->all();
+    }
+
+    /**
+     * Issued warning letters by level (all-time — SP1..SP3 are rare enough
+     * that a monthly window would mostly read empty).
+     *
+     * @return array<int, array{label: string, value: int, color: string}>
+     */
+    #[Computed]
+    public function warningBreakdown(): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        $counts = WarningLetter::query()
+            ->where('status', WarningStatus::Approved)
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->selectRaw('level, COUNT(*) as total')
+            ->groupBy('level')
+            ->pluck('total', 'level');
+
+        $colors = [
+            WarningLevel::Sp1->value => 'bg-amber-500',
+            WarningLevel::Sp2->value => 'bg-orange-500',
+            WarningLevel::Sp3->value => 'bg-red-500',
+        ];
+
+        return collect(WarningLevel::cases())
+            ->map(fn (WarningLevel $level) => [
+                'label' => $level->label(),
+                'value' => (int) ($counts[$level->value] ?? 0),
+                'color' => $colors[$level->value],
+            ])
+            ->all();
+    }
+
+    /**
+     * Permit requests this month by decision status.
+     *
+     * @return array<int, array{label: string, value: int, color: string}>
+     */
+    #[Computed]
+    public function permitBreakdown(): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        $counts = Permit::query()
+            ->whereBetween('date', [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()])
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $colors = [
+            PermitStatus::Pending->value => 'bg-amber-500',
+            PermitStatus::Approved->value => 'bg-green-500',
+            PermitStatus::Rejected->value => 'bg-red-500',
+        ];
+
+        return collect(PermitStatus::cases())
+            ->map(fn (PermitStatus $status) => [
+                'label' => $status->label(),
+                'value' => (int) ($counts[$status->value] ?? 0),
+                'color' => $colors[$status->value],
+            ])
+            ->all();
+    }
+
+    /**
+     * Discipline-point additions per month over the last 6 months.
+     *
+     * @return array<int, array{label: string, value: int}>
+     */
+    #[Computed]
+    public function pointAdditionsTrend(): array
+    {
+        return $this->pointTypeTrend(PointType::Addition);
+    }
+
+    /**
+     * Discipline-point deductions per month over the last 6 months (see
+     * {@see pointAdditionsTrend()}).
+     *
+     * @return array<int, array{label: string, value: int}>
+     */
+    #[Computed]
+    public function pointDeductionsTrend(): array
+    {
+        return $this->pointTypeTrend(PointType::Deduction);
+    }
+
+    /**
+     * Monthly point-log totals of the given type, scoped to
+     * {@see scopedStudentIds()}, over the last 6 months.
+     *
+     * @return array<int, array{label: string, value: int}>
+     */
+    private function pointTypeTrend(PointType $type): array
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        if ($studentIds !== null && $studentIds->isEmpty()) {
+            return [];
+        }
+
+        $start = now()->copy()->subMonths(5)->startOfMonth();
+
+        $logs = PointLog::query()
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->where('type', $type)
+            ->where('created_at', '>=', $start)
+            ->get(['delta', 'created_at']);
+
+        return collect(range(0, 5))
+            ->map(function (int $offset) use ($logs, $start) {
+                $month = $start->copy()->addMonths($offset);
+
+                return [
+                    'label' => $month->translatedFormat('M'),
+                    'value' => (int) abs($logs->filter(fn ($log) => $log->created_at->isSameMonth($month))->sum('delta')),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Student ids the signed-in role's charts should be scoped to; null
+     * means every student — leadership, guru piket, guru mapel, and guru bk
+     * all monitor the whole school per the PRD access matrix.
+     *
+     * @return \Illuminate\Support\Collection<int, int>|null
+     */
+    private function scopedStudentIds(): ?\Illuminate\Support\Collection
+    {
+        return match ($this->role()) {
+            UserRole::WaliKelas => $this->homeroomClass?->students()->pluck('id') ?? collect(),
+            UserRole::Siswa => $this->student ? collect([$this->student->id]) : collect(),
+            UserRole::OrangTua => $this->children->pluck('id'),
+            default => null,
+        };
     }
 
     /**
@@ -288,4 +555,92 @@ new #[Title('Dashboard')] class extends Component
                 <flux:text class="mt-2">{{ __('Akun Anda belum memiliki peran. Hubungi administrator sekolah.') }}</flux:text>
             </div>
         @endif
+
+        {{-- Chart summaries, scoped to own/homeroom/school-wide data per role (see scopedStudentIds()) --}}
+        @canany([
+            Permission::ViewAttendance->value,
+            Permission::ViewPoint->value,
+            Permission::ViewViolation->value,
+            Permission::ViewAchievement->value,
+            Permission::ViewWarning->value,
+            Permission::ViewPermit->value,
+        ])
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                @can(Permission::ViewAttendance->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Tren Kehadiran Bulan Ini') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('Jumlah hadir & terlambat per hari.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.bar :data="$this->attendanceTrend" :label-every="5" />
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Distribusi Status Kehadiran') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('Komposisi status bulan ini.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.distribution :data="$this->attendanceStatusBreakdown" />
+                        </div>
+                    </div>
+                @endcan
+
+                @can(Permission::ViewPoint->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Penambahan Poin') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.bar :data="$this->pointAdditionsTrend" color="bg-green-500" />
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Pengurangan Poin') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.bar :data="$this->pointDeductionsTrend" color="bg-red-500" />
+                        </div>
+                    </div>
+                @endcan
+
+                @can(Permission::ViewViolation->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Pelanggaran Terbanyak') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('5 jenis teratas bulan ini.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.ranked-list :data="$this->violationBreakdown" color="bg-red-400" :empty="__('Belum ada pelanggaran bulan ini.')" />
+                        </div>
+                    </div>
+                @endcan
+
+                @can(Permission::ViewAchievement->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Prestasi per Tingkat') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('Prestasi disetujui bulan ini.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.ranked-list :data="$this->achievementBreakdown" color="bg-green-400" :empty="__('Belum ada prestasi bulan ini.')" />
+                        </div>
+                    </div>
+                @endcan
+
+                @can(Permission::ViewWarning->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Surat Peringatan') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('Surat diterbitkan per level.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.distribution :data="$this->warningBreakdown" />
+                        </div>
+                    </div>
+                @endcan
+
+                @can(Permission::ViewPermit->value)
+                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                        <flux:heading size="lg">{{ __('Status Perizinan') }}</flux:heading>
+                        <flux:text class="mt-1 text-sm">{{ __('Pengajuan bulan ini.') }}</flux:text>
+                        <div class="mt-4">
+                            <x-charts.distribution :data="$this->permitBreakdown" />
+                        </div>
+                    </div>
+                @endcan
+            </div>
+        @endcanany
     </div>

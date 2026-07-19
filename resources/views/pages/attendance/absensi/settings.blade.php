@@ -69,7 +69,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
             'check_out_after' => $data['check_out_after'].':00',
         ]);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pengaturan absensi disimpan.')]);
+        toast(__('Pengaturan absensi disimpan.'), 'success');
 
         $this->redirectRoute('attendance.absensi', navigate: true);
     }

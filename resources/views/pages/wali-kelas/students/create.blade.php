@@ -80,7 +80,7 @@ new #[Title('Tambah Siswa')] class extends Component {
 
         Student::create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa ditambahkan.')]);
+        toast(__('Siswa ditambahkan.'), 'success');
 
         $this->redirectRoute('wali-kelas.students.index', navigate: true);
     }

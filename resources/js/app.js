@@ -33,10 +33,12 @@ window.confirmDelete = function confirmDelete(onConfirm, options = {}) {
 };
 
 /**
- * Status feedback toast. Triggered from Livewire via:
+ * Status feedback toast for in-page (AJAX) Livewire actions, triggered via:
  *   $this->dispatch('swal', icon: 'success', title: __('Tersimpan'));
- * or from a session flash bridge (see layouts/app/sidebar.blade.php) after a
- * redirect.
+ *
+ * Redirect flows use realrashid/sweet-alert instead: call toast()/alert() in
+ * PHP and the @include('sweetalert::alert') in the layouts renders it after
+ * navigation.
  */
 window.addEventListener('swal', (event) => {
     const detail = (Array.isArray(event.detail) ? event.detail[0] : event.detail) ?? {};

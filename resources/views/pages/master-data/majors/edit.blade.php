@@ -36,7 +36,7 @@ new #[Title('Edit Jurusan')] class extends Component {
 
         $this->major->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Jurusan diperbarui.')]);
+        toast(__('Jurusan diperbarui.'), 'success');
 
         $this->redirectRoute('master-data.majors', navigate: true);
     }

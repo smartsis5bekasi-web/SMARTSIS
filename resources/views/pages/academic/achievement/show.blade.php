@@ -60,7 +60,7 @@ new #[Title('Detail Prestasi')] class extends Component {
 
         $this->achievement->approve(auth()->user());
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Prestasi disetujui, poin ditambahkan.')]);
+        toast(__('Prestasi disetujui, poin ditambahkan.'), 'success');
 
         $this->redirectRoute('academic.achievements', navigate: true);
     }
@@ -73,7 +73,7 @@ new #[Title('Detail Prestasi')] class extends Component {
 
         $this->achievement->reject(auth()->user(), $this->note);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Prestasi ditolak.')]);
+        toast(__('Prestasi ditolak.'), 'success');
 
         $this->redirectRoute('academic.achievements', navigate: true);
     }
@@ -107,7 +107,7 @@ new #[Title('Detail Prestasi')] class extends Component {
 
         $this->achievement->delete();
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Prestasi dihapus.')]);
+        toast(__('Prestasi dihapus.'), 'success');
 
         $this->redirectRoute('academic.achievements', navigate: true);
     }

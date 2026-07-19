@@ -97,7 +97,7 @@ new #[Title('Catat Pelanggaran')] class extends Component {
             $message = __('Pelanggaran dicatat, menunggu verifikasi Guru BK.');
         }
 
-        session()->flash('swal', ['icon' => 'success', 'title' => $message]);
+        toast($message, 'success');
 
         $this->redirectRoute('academic.violations', navigate: true);
     }

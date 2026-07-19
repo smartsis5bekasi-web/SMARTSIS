@@ -76,7 +76,7 @@ new #[Title('Edit Aturan Poin')] class extends Component {
 
         $this->pointRule->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Aturan poin diperbarui.')]);
+        toast(__('Aturan poin diperbarui.'), 'success');
 
         $this->redirectRoute('attendance.points', navigate: true);
     }

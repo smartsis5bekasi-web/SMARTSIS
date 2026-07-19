@@ -92,7 +92,7 @@ new #[Title('Edit Prestasi')] class extends Component {
 
         $this->achievement->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Prestasi diperbarui.')]);
+        toast(__('Prestasi diperbarui.'), 'success');
 
         $this->redirectRoute('academic.achievements', navigate: true);
     }

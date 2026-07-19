@@ -39,7 +39,7 @@ new #[Title('Pengaturan Poin')] class extends Component {
 
         $this->setting->update($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pengaturan poin disimpan.')]);
+        toast(__('Pengaturan poin disimpan.'), 'success');
 
         $this->redirectRoute('attendance.points', navigate: true);
     }

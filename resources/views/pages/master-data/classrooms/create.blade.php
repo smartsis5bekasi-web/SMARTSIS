@@ -74,7 +74,7 @@ new #[Title('Tambah Kelas')] class extends Component {
 
         Classroom::create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Kelas ditambahkan.')]);
+        toast(__('Kelas ditambahkan.'), 'success');
 
         $this->redirectRoute('master-data.classrooms', navigate: true);
     }

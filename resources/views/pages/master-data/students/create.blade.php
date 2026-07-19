@@ -148,7 +148,7 @@ new #[Title('Tambah Siswa')] class extends Component {
             $student->parents()->attach($parent->id, ['relationship' => $row['relationship']]);
         }
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Siswa ditambahkan.')]);
+        toast(__('Siswa ditambahkan.'), 'success');
 
         $this->redirectRoute('master-data.students.index', navigate: true);
     }

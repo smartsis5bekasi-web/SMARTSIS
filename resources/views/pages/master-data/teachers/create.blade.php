@@ -28,14 +28,7 @@ new #[Title('Tambah Guru')] class extends Component {
      */
     public function roleOptions(): array
     {
-        return [
-            UserRole::KepalaSekolah,
-            UserRole::WakasekKesiswaan,
-            UserRole::GuruBk,
-            UserRole::WaliKelas,
-            UserRole::GuruPiket,
-            UserRole::GuruMapel,
-        ];
+        return UserRole::teacherRoles();
     }
 
     /**
@@ -75,7 +68,7 @@ new #[Title('Tambah Guru')] class extends Component {
             ]);
         });
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Guru ditambahkan.')]);
+        toast(__('Guru ditambahkan.'), 'success');
 
         $this->redirectRoute('master-data.teachers', navigate: true);
     }

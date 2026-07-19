@@ -30,7 +30,7 @@ new #[Title('Tambah Tahun Ajaran')] class extends Component {
 
         AcademicYear::create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Tahun ajaran ditambahkan.')]);
+        toast(__('Tahun ajaran ditambahkan.'), 'success');
 
         $this->redirectRoute('master-data.academic-years', navigate: true);
     }

@@ -51,7 +51,7 @@ new #[Title('Detail Izin')] class extends Component {
 
         $this->permit->approve(auth()->user(), $this->note !== '' ? $this->note : null);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Izin disetujui.')]);
+        toast(__('Izin disetujui.'), 'success');
 
         $this->redirectRoute('permits.index', navigate: true);
     }
@@ -68,7 +68,7 @@ new #[Title('Detail Izin')] class extends Component {
 
         $this->permit->reject(auth()->user(), $this->note);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Izin ditolak.')]);
+        toast(__('Izin ditolak.'), 'success');
 
         $this->redirectRoute('permits.index', navigate: true);
     }
@@ -79,7 +79,7 @@ new #[Title('Detail Izin')] class extends Component {
 
         $this->permit->delete();
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Pengajuan izin dibatalkan.')]);
+        toast(__('Pengajuan izin dibatalkan.'), 'success');
 
         $this->redirectRoute('permits.index', navigate: true);
     }

@@ -121,7 +121,7 @@ new #[Title('Ajukan Prestasi')] class extends Component {
             $message = __('Prestasi diajukan, menunggu verifikasi.');
         }
 
-        session()->flash('swal', ['icon' => 'success', 'title' => $message]);
+        toast($message, 'success');
 
         $this->redirectRoute('academic.achievements', navigate: true);
     }

@@ -79,7 +79,7 @@ new #[Title('Ajukan Izin')] class extends Component {
 
         $student->permits()->create($data);
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Izin diajukan, menunggu persetujuan.')]);
+        toast(__('Izin diajukan, menunggu persetujuan.'), 'success');
 
         $this->redirectRoute('permits.index', navigate: true);
     }

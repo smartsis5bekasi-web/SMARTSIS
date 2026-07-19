@@ -5,7 +5,8 @@
 // Blink Detection via Eye Aspect Ratio on the 68-point landmarks) → hand the
 // matched student id to the Livewire page, which records check-in/check-out.
 //
-// The scan page (pages::attendance.absensi.scan) calls
+// The staffed kiosk (pages::attendance.absensi.scan) and the siswa's own
+// Absensi page (pages::attendance.absensi.index) call
 // window.SmartsisAttendance.start($el, $wire, { students }) from Alpine x-init.
 
 import * as faceapi from '@vladmandic/face-api';
@@ -110,6 +111,10 @@ window.SmartsisAttendance = {
             return;
         }
 
+        // This session's own camera stream, so the DOM-removal guard in tick()
+        // never stops a newer session's stream by accident.
+        let stream = null;
+
         const matcher = new faceapi.FaceMatcher(
             students.map(
                 (student) =>
@@ -129,11 +134,12 @@ window.SmartsisAttendance = {
 
             setStatus('Menyalakan kamera…');
             stopped = false;
-            mediaStream = await navigator.mediaDevices.getUserMedia({
+            stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
                 audio: false,
             });
-            video.srcObject = mediaStream;
+            mediaStream = stream;
+            video.srcObject = stream;
             await video.play();
         } catch (error) {
             console.error('[SmartsisAttendance]', error);
@@ -162,6 +168,18 @@ window.SmartsisAttendance = {
 
         const tick = async () => {
             if (stopped) {
+                return;
+            }
+
+            // Livewire removes the scanner block once the siswa's day is
+            // fully recorded — release the camera instead of looping on.
+            if (!container.isConnected) {
+                stream?.getTracks().forEach((track) => track.stop());
+
+                if (mediaStream === stream) {
+                    mediaStream = null;
+                }
+
                 return;
             }
 

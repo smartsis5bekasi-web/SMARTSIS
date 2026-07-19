@@ -41,14 +41,7 @@ new #[Title('Edit Guru')] class extends Component {
      */
     public function roleOptions(): array
     {
-        return [
-            UserRole::KepalaSekolah,
-            UserRole::WakasekKesiswaan,
-            UserRole::GuruBk,
-            UserRole::WaliKelas,
-            UserRole::GuruPiket,
-            UserRole::GuruMapel,
-        ];
+        return UserRole::teacherRoles();
     }
 
     /**
@@ -85,7 +78,7 @@ new #[Title('Edit Guru')] class extends Component {
             $this->teacher->update(['name' => $data['name'], 'nip' => $data['nip'], 'phone' => $data['phone']]);
         });
 
-        session()->flash('swal', ['icon' => 'success', 'title' => __('Data guru diperbarui.')]);
+        toast(__('Data guru diperbarui.'), 'success');
 
         $this->redirectRoute('master-data.teachers', navigate: true);
     }
