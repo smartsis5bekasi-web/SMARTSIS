@@ -11,7 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('onboarding', 'pages::onboarding.index')->name('onboarding');
 });
 
-Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () {
+Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
 
     Route::middleware('permission:'.Permission::ManageMasterData->value)

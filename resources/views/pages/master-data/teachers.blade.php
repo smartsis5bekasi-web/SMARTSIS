@@ -19,11 +19,13 @@ use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use App\Livewire\Concerns\TogglesUserActiveStatus; 
 
 new #[Title('Guru')] class extends Component {
     use ImportsSpreadsheetRows;
     use WithFileUploads;
     use WithPagination;
+    use TogglesUserActiveStatus;
 
     public bool $showImportModal = false;
 
@@ -269,6 +271,7 @@ new #[Title('Guru')] class extends Component {
                         <th class="px-4 py-3 font-medium">{{ __('Peran') }}</th>
                         <th class="px-4 py-3 font-medium">{{ __('Telepon') }}</th>
                         <th class="px-4 py-3 text-right font-medium">{{ __('Aksi') }}</th>
+                        <th class="px-4 py-3 text-right font-medium">{{ __('Status') }}</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 text-gray-700">
@@ -295,10 +298,13 @@ new #[Title('Guru')] class extends Component {
                                     <x-ui.delete-button :wire-id="$teacher->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
                                 </div>
                             </td>
+                            <td class="px-4 py-3 text-right">
+                                <x-ui.status-toggle :user="$teacher->user" :method="'toggleActive'" />
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data guru.') }}</td>
+                            <td colspan="7" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data guru.') }}</td>
                         </tr>
                     @endforelse
                 </tbody>
