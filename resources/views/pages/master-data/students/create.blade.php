@@ -5,9 +5,14 @@ use App\Models\Major;
 use App\Models\ParentGuardian;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Enums\UserRole;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -18,6 +23,10 @@ new #[Title('Tambah Siswa')] class extends Component {
     use WithFileUploads;
 
     public string $name = '';
+
+    public string $email = '';
+
+    public string $password = '';
 
     public string $nis = '';
 
@@ -51,6 +60,8 @@ new #[Title('Tambah Siswa')] class extends Component {
     {
         return [
             'name' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:225', Rule::unique('users', 'email')],
+            'password' => ['required', 'string', 'min:8'],
             'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
             'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],
             'gender' => ['nullable', Rule::in(['L', 'P'])],
@@ -126,18 +137,30 @@ new #[Title('Tambah Siswa')] class extends Component {
         return Teacher::query()->orderBy('name')->get();
     }
 
-    public function save(): void
-    {
-        $data = $this->validate();
+   public function save(): void
+{
+    $data = $this->validate();
 
-        if ($this->avatar) {
-            $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
-        }
+    if ($this->avatar) {
+        $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
+    }
 
-        $parentRows = $data['parents'] ?? [];
-        unset($data['avatar'], $data['parents']);
+    $parentRows = $data['parents'] ?? [];
+    $email = $data['email'];
+    $password = $data['password'];
+    unset($data['avatar'], $data['parents'], $data['email'], $data['password']);
 
-        $student = Student::create($data);
+    DB::transaction(function () use ($data, $email, $password, $parentRows) {
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $email,
+            'password' => Hash::make($password),
+            'is_active' => true,
+        ]);
+
+        $user->assignRole(UserRole::Siswa->value);
+
+        $student = Student::create([...$data, 'user_id' => $user->id]);
 
         foreach ($parentRows as $row) {
             $parent = ParentGuardian::create([
@@ -147,11 +170,12 @@ new #[Title('Tambah Siswa')] class extends Component {
 
             $student->parents()->attach($parent->id, ['relationship' => $row['relationship']]);
         }
+    });
 
-        toast(__('Siswa ditambahkan.'), 'success');
+    toast(__('Siswa ditambahkan.'), 'success');
 
-        $this->redirectRoute('master-data.students.index', navigate: true);
-    }
+    $this->redirectRoute('master-data.students.index', navigate: true);
+}
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
@@ -272,6 +296,24 @@ new #[Title('Tambah Siswa')] class extends Component {
                     @endforeach
                 </x-slim-select>
                 @error('teacher_id')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+
+            <div class="flex flex-col">
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Email') }} <span class="text-red-500">*</span></label>
+                <input type="email" wire:model="email" placeholder="siswa@email.com"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                @error('email')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+
+            <div class="flex flex-col">
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Password') }} <span class="text-red-500">*</span></label>
+                <input type="password" wire:model="password" placeholder="{{ __('Minimal 8 karakter') }}"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                @error('password')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>
