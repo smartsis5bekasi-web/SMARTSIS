@@ -340,18 +340,20 @@ new #[Title('Siswa')] class extends Component {
                             </td>
 
                                 <td class="py-2.5 px-4">
-                                    <div class="flex flex-col items-center gap-y-2">
-                                    <div class="flex flex-row items-center gap-x-4">
-                                          <a href="#" title="Lihat" target="_blank"  title="Lihat"><ion-icon name="eye-outline" class="text-2xl text-primary cursor-pointer"></ion-icon></a>
-                                           <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="text-primary" title="Ubah">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M8 3H3C1.89543 3 1 3.89543 1 5V16C1 17.1046 1.89543 18 3 18H14C15.1046 18 16 17.1046 16 16V11M14.5858 1.58579C15.3668 0.804738 16.6332 0.804738 17.4142 1.58579C18.1953 2.36683 18.1953 3.63316 17.4142 4.41421L8.82842 13H6L6 10.1716L14.5858 1.58579Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                        </a>
-                                         <x-ui.delete-button :wire-id="$student->id" />
-                                    </div>
-                                    </div>
-                                </td>
+    <div class="flex flex-col items-center gap-y-2">
+        <div class="flex flex-row items-center gap-x-4">
+            <a href="{{ route('master-data.students.show', $student) }}" wire:navigate title="Lihat">
+                <ion-icon name="eye-outline" class="text-2xl text-primary cursor-pointer"></ion-icon>
+            </a>
+            <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="text-primary" title="Ubah">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3H3C1.89543 3 1 3.89543 1 5V16C1 17.1046 1.89543 18 3 18H14C15.1046 18 16 17.1046 16 16V11M14.5858 1.58579C15.3668 0.804738 16.6332 0.804738 17.4142 1.58579C18.1953 2.36683 18.1953 3.63316 17.4142 4.41421L8.82842 13H6L6 10.1716L14.5858 1.58579Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </a>
+            <x-ui.delete-button :wire-id="$student->id" />
+        </div>
+    </div>
+</td>
                             
                                 <td class="py-2.5 px-4 text-center">
                                     <x-ui.status-toggle :user="$student->user" />

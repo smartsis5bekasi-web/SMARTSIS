@@ -33,6 +33,7 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('siswa', 'pages::master-data.students.index')->name('students.index');
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
+            Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
         });
 
     Route::middleware('role:'.UserRole::WaliKelas->value)
