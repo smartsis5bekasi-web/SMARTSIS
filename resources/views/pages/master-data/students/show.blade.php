@@ -7,9 +7,46 @@ use Livewire\Component;
 new #[Title('Detail Siswa')] class extends Component {
     public Student $student;
 
+    public bool $showResetPasswordModal = false;
+
+    public string $newPassword = '';
+
     public function mount(Student $student): void
     {
         $this->student = $student->load(['classroom', 'major', 'teacher', 'parents', 'user']);
+    }
+
+    public function openResetPasswordModal(): void
+    {
+        $this->reset('newPassword');
+        $this->resetValidation();
+        $this->showResetPasswordModal = true;
+    }
+
+    public function closeResetPasswordModal(): void
+    {
+        $this->reset('newPassword', 'showResetPasswordModal');
+        $this->resetValidation();
+    }
+
+    public function resetPassword(): void
+    {
+        if (! $this->student->user) {
+            $this->dispatch('swal', icon: 'error', title: __('Siswa ini belum punya akun login.'));
+            return;
+        }
+
+        $this->validate([
+            'newPassword' => ['required', 'string', 'min:8'],
+        ]);
+
+        $this->student->user->update([
+            'password' => $this->newPassword,   
+        ]);
+
+        $this->closeResetPasswordModal();
+
+        $this->dispatch('swal', icon: 'success', title: __('Password berhasil direset.'));
     }
 }; ?>
 
@@ -46,7 +83,13 @@ new #[Title('Detail Siswa')] class extends Component {
                     <span class="font-medium text-gray-600">{{ __('Poin Saat Ini') }}</span>
                     <span class="rounded-full bg-primary-50 px-3 py-1 font-semibold text-primary-700">{{ $student->current_point }}</span>
                 </div>
-            </div>
+
+                @if ($student->user)
+                    <x-ui.button variant="secondary" icon="key-outline" wire:click="openResetPasswordModal" class="w-full mt-2">
+                        {{ __('Reset Password') }}
+                    </x-ui.button>
+                @endif
+            </div>  
 
             <div class="flex flex-wrap justify-center gap-1.5 border-t border-gray-100 pt-4 w-full">
                 @if ($student->hasCompletedOnboarding())
@@ -137,4 +180,44 @@ new #[Title('Detail Siswa')] class extends Component {
             </p>
         @endforelse
     </div>
+
+    @if ($showResetPasswordModal)
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-on:keydown.escape.window="$wire.closeResetPasswordModal()">
+        <div class="absolute inset-0 bg-gray-900/50" wire:click="closeResetPasswordModal"></div>
+
+        <div class="relative flex w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                <h2 class="text-lg font-semibold text-gray-900">{{ __('Reset Password') }}</h2>
+                <button type="button" wire:click="closeResetPasswordModal" class="inline-flex text-gray-400 transition hover:text-gray-600">
+                    <ion-icon name="close-outline" class="text-2xl"></ion-icon>
+                </button>
+            </div>
+
+            <div class="space-y-4 px-6 py-5">
+                <p class="text-sm text-gray-600">
+                    {{ __('Masukkan password baru untuk :name.', ['name' => $student->name]) }}
+                </p>
+
+                <div class="flex flex-col">
+                    <label class="mb-1 font-semibold text-gray-600">{{ __('Password Baru') }} <span class="text-red-500">*</span></label>
+                    <input type="password" wire:model="newPassword" placeholder="{{ __('Minimal 8 karakter') }}"
+                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    @error('newPassword')
+                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                    @enderror
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-gray-100 bg-gray-50 px-6 py-4">
+                <x-ui.button variant="secondary" wire:click="closeResetPasswordModal">
+                    {{ __('Batal') }}
+                </x-ui.button>
+                <x-ui.button variant="primary" wire:click="resetPassword" wire:loading.attr="disabled" wire:target="resetPassword">
+                    <span wire:loading.remove wire:target="resetPassword">{{ __('Simpan') }}</span>
+                    <span wire:loading wire:target="resetPassword">{{ __('Memproses...') }}</span>
+                </x-ui.button>
+            </div>
+        </div>
+    </div>
+@endif
 </div>

@@ -14,6 +14,7 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use Illuminate\Support\Facades\DB;
 
 new #[Title('Edit Siswa')] class extends Component {
     use WithFileUploads;
@@ -38,6 +39,9 @@ new #[Title('Edit Siswa')] class extends Component {
 
     public ?int $teacher_id = null;
 
+    public string $email = '';
+
+
     public ?TemporaryUploadedFile $avatar = null;
 
     /**
@@ -60,6 +64,7 @@ new #[Title('Edit Siswa')] class extends Component {
             ->values()
             ->all();
         $this->name = $student->name;
+        $this->email = $student->user?->email ?? '';
         $this->nis = $student->nis;
         $this->nisn = $student->nisn;
         $this->gender = $student->gender;
@@ -86,6 +91,7 @@ new #[Title('Edit Siswa')] class extends Component {
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
             'teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
             'avatar' => ['nullable', 'image', 'max:2048'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->student->user_id)],
             'parents' => ['array'],
             'parents.*.id' => ['nullable', Rule::exists('parents', 'id')],
             'parents.*.name' => ['required', 'string', 'max:100'],
@@ -153,29 +159,33 @@ new #[Title('Edit Siswa')] class extends Component {
         return Teacher::query()->orderBy('name')->get();
     }
 
-    public function save(): void
-    {
-        $data = $this->validate();
+ public function save(): void
+{
+    $data = $this->validate();
 
-        if ($this->avatar) {
-            $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
+    if ($this->avatar) {
+        $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
 
-            if ($this->student->avatar_url) {
-                Storage::disk('public')->delete(Str::after($this->student->avatar_url, '/storage/'));
-            }
+        if ($this->student->avatar_url) {
+            Storage::disk('public')->delete(Str::after($this->student->avatar_url, '/storage/'));
         }
+    }
 
-        $parentRows = $data['parents'] ?? [];
-        unset($data['avatar'], $data['parents']);
+    $parentRows = $data['parents'] ?? [];
+    $email = $data['email'];
+    unset($data['avatar'], $data['parents'], $data['email']);
+
+    DB::transaction(function () use ($data, $email, $parentRows) {
+        $this->student->user?->update(['email' => $email, 'name' => $data['name']]);
 
         $this->student->update($data);
         $this->syncParents($parentRows);
+    });
 
-        toast(__('Siswa diperbarui.'), 'success');
+    toast(__('Siswa diperbarui.'), 'success');
 
-        $this->redirectRoute('master-data.students.index', navigate: true);
-    }
-
+    $this->redirectRoute('master-data.students.index', navigate: true);
+}
     /**
      * Sync the parent rows with the pivot: update kept rows, create new ones,
      * and detach removed ones. Detached parents without an account and no
@@ -273,6 +283,15 @@ new #[Title('Edit Siswa')] class extends Component {
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>
+
+            <div class="flex flex-col">
+    <label class="mb-1 font-semibold text-gray-600">{{ __('Email') }} <span class="text-red-500">*</span></label>
+    <input type="email" wire:model="email" placeholder="siswa@email.com"
+        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+    @error('email')
+        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+    @enderror
+</div>
 
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Jenis Kelamin') }}</label>

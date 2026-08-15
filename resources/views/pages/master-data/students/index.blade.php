@@ -49,6 +49,8 @@ new #[Title('Siswa')] class extends Component {
 
     public function delete(Student $student): void
     {
+        $student->loadMissing('user');
+        $student->user?->delete();
         $student->delete();
 
         $this->dispatch('swal', icon: 'success', title: __('Siswa dihapus.'));
@@ -271,7 +273,7 @@ new #[Title('Siswa')] class extends Component {
     }
 }; ?>
 
-<div class="justify-center max-xl:w-full">
+<div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Siswa')" :subtitle="__('Kelola data siswa.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="download-outline" wire:click="export">
@@ -285,89 +287,72 @@ new #[Title('Siswa')] class extends Component {
             </x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
-     <div class="flex-col bg-white rounded-xl p-8 drop-shadow-lg mt-5">
-           <div class="rounded-2xl border bg-gray-100 overflow-auto">
-            <table class="border-collapse rounded-2xl min-w-full leading-normal">
-                <thead class="rounded-2xl">
-                    <tr class="rounded-2xl text-gray-500 font-normal text-md text-left whitespace-nowrap">
-                        <th class="py-2.5 px-4">No</th>
-                        <th class="py-2.5 px-4">Foto</th>
-                        <th class="py-2.5 px-4">Nama Siswa</th>
-                        <th class="py-2.5 px-4">Email Siswa</th>
-                        <th class="py-2.5 px-4">Kelas</th>
-                        <th class="py-2.5 px-4">Jurusan</th>
-                        <th class="py-2.5 px-4">Jenis Kelamin</th>
-                        <th class="py-2.5 px-4">Orang Tua</th>
-                        <th class="py-2.5 px-4 text-center">Aksi</th>
-                        <th class="py-2.5 px-4 text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="rounded-2xl bg-white text-gray-700">
-                     @forelse ($this->students as $key => $student)
-                        <tr wire:key="{{ $student->id }}">
-                            <td class="py-2.5 px-4">
-
-                                {{ $key + $this->students->firstItem() }}
-                            </td>
-                          <td class="py-2.5 px-4">
-                            <div class="flex flex-col items-start gap-6 px-2">
-                                <img class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 object-cover rounded-full border border-gray-200 shadow-sm" src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $student->name }}" />
+    
+<div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+    <div class="overflow-x-auto">
+        <table class="min-w-full border-collapse text-sm">
+            <thead>
+                <tr class="border-b border-gray-100 text-left text-gray-500">
+                    <th class="px-4 py-3 font-medium">No</th>
+                    <th class="px-4 py-3 font-medium">Foto</th>
+                    <th class="px-4 py-3 font-medium">Nama Siswa</th>
+                    <th class="px-4 py-3 font-medium">Email Siswa</th>
+                    <th class="px-4 py-3 font-medium">Kelas</th>
+                    <th class="px-4 py-3 font-medium">Jurusan</th>
+                    <th class="px-4 py-3 font-medium">Jenis Kelamin</th>
+                    <th class="px-4 py-3 font-medium">Orang Tua</th>
+                    <th class="px-4 py-3 text-right font-medium">Aksi</th>
+                    <th class="px-4 py-3 text-right font-medium">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 text-gray-700">
+                @forelse ($this->students as $key => $student)
+                    <tr wire:key="{{ $student->id }}" class="hover:bg-gray-50">
+                        <td class="px-4 py-3">{{ $key + $this->students->firstItem() }}</td>
+                        <td class="px-4 py-3">
+                            <img class="h-10 w-10 rounded-full border border-gray-200 object-cover shadow-sm sm:h-12 sm:w-12"
+                                src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $student->name }}" />
+                        </td>
+                        <td class="px-4 py-3 font-medium text-gray-900">{{ $student->name }}</td>
+                        <td class="px-4 py-3">{{ $student->user?->email ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $student->classroom?->name ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $student->major?->name ?? '—' }}</td>
+                        <td class="px-4 py-3">
+                            {{ $student->gender === 'L' ? __('Laki-laki') : ($student->gender === 'P' ? __('Perempuan') : '—') }}
+                        </td>
+                        <td class="px-4 py-3">
+                            @forelse ($student->parents as $parent)
+                                <p class="whitespace-nowrap">{{ $parent->name }} <span class="text-xs text-gray-400">({{ $parent->pivot->relationship ?? '—' }})</span></p>
+                            @empty
+                                —
+                            @endforelse
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center justify-end gap-3">
+                                <a href="{{ route('master-data.students.show', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Lihat') }}">
+                                    <ion-icon name="eye-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Ubah') }}">
+                                    <ion-icon name="create-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <x-ui.delete-button :wire-id="$student->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
                             </div>
-                            </td>  
-                            <td class="py-2.5 px-4">
-                                <div class="flex flex-col items-left gap-6 px-2">
-                                    <p class="max-w-xs">{{ $student->name }}</p>
-                                </div>
-                            </td>
-                            <td class="py-2.5 px-4 text-left">
-                              <p class="max-w-xs">{{ $student->user->email ?? '-' }}</p>
-                            </td>
-                            <td class="py-2.5 px-4">
-                                {{ $student->classroom?->name ?? '—' }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                                {{ $student->major?->name ?? '-' }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                              {{ $student->gender === 'L' ? __('Laki-laki') : ($student->gender === 'P' ? __('Perempuan') : '—') }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                                @forelse ($student->parents as $parent)
-                                    <p class="max-w-xs whitespace-nowrap">{{ $parent->name }} <span class="text-xs text-gray-400">({{ $parent->pivot->relationship ?? '—' }})</span></p>
-                                @empty
-                                    —
-                                @endforelse
-                            </td>
-
-                                <td class="py-2.5 px-4">
-    <div class="flex flex-col items-center gap-y-2">
-        <div class="flex flex-row items-center gap-x-4">
-            <a href="{{ route('master-data.students.show', $student) }}" wire:navigate title="Lihat">
-                <ion-icon name="eye-outline" class="text-2xl text-primary cursor-pointer"></ion-icon>
-            </a>
-            <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="text-primary" title="Ubah">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 3H3C1.89543 3 1 3.89543 1 5V16C1 17.1046 1.89543 18 3 18H14C15.1046 18 16 17.1046 16 16V11M14.5858 1.58579C15.3668 0.804738 16.6332 0.804738 17.4142 1.58579C18.1953 2.36683 18.1953 3.63316 17.4142 4.41421L8.82842 13H6L6 10.1716L14.5858 1.58579Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </a>
-            <x-ui.delete-button :wire-id="$student->id" />
-        </div>
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <x-ui.status-toggle :user="$student->user" />
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="10" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data siswa.') }}</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
     </div>
-</td>
-                            
-                                <td class="py-2.5 px-4 text-center">
-                                    <x-ui.status-toggle :user="$student->user" />
-                                </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="10" class="p-5 text-center">Belum ada data Mentor yang dapat ditampilkan</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-           </div>
-     </div>
+
+    <div class="mt-4">{{ $this->students->links() }}</div>
+</div>
 
     @if ($showImportModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-on:keydown.escape.window="$wire.closeImportModal()">
