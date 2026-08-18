@@ -11,6 +11,10 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithPagination;
+use App\Exports\PermitExport;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+
 
 new #[Title('Perizinan')] class extends Component {
     use WithPagination;
@@ -110,18 +114,37 @@ new #[Title('Perizinan')] class extends Component {
             default => Permit::query(),
         };
     }
+
+    public function exportExcel(): BinaryFileResponse
+    {
+        $export = new PermitExport(
+            baseQuery: $this->scopedQuery(),
+            status: $this->status,
+            type: $this->type,
+        );
+
+        return Excel::download($export, 'perizinan-'.now()->format('Y-m-d').'.xlsx');
+    }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <x-ui.page-header :title="__('Perizinan')"
+   <x-ui.page-header :title="__('Perizinan')"
         :subtitle="$this->isStudent() ? __('Ajukan izin dan pantau statusnya.') : __('Kelola & pantau pengajuan izin siswa.')">
-        @if ($this->canRequest())
-            <x-slot:actions>
+        
+        <x-slot:actions>
+            @if ($this->canDecideAny())
+                <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
+                    {{ __('Export Excel') }}
+                </x-ui.button>
+            @endif
+
+            @if ($this->canRequest())
                 <x-ui.button variant="primary" icon="add-outline" :href="route('permits.create')" wire:navigate>
                     {{ __('Ajukan Izin') }}
                 </x-ui.button>
-            </x-slot:actions>
-        @endif
+            @endif
+        </x-slot:actions>
+
     </x-ui.page-header>
 
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">

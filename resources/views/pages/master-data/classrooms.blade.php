@@ -34,6 +34,8 @@ new #[Title('Kelas')] class extends Component {
         $classroom->delete();
         $this->dispatch('swal', icon: 'success', title: __('Kelas dihapus.'));
     }
+
+    ;
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">

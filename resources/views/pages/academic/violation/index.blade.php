@@ -3,6 +3,7 @@
 use App\Enums\Permission;
 use App\Enums\PointApprovalStatus;
 use App\Enums\UserRole;
+use App\Exports\ViolationExport;
 use App\Models\Violation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -10,6 +11,8 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 new #[Title('Pelanggaran')] class extends Component {
     use WithPagination;
@@ -28,15 +31,12 @@ new #[Title('Pelanggaran')] class extends Component {
     public function violations(): LengthAwarePaginator
     {
         return $this->scopedQuery()
-            ->with(['student', 'pointRule'])
+            ->with(['student.classroom', 'pointRule'])
             ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
             ->latest()
             ->paginate(10);
     }
 
-    /**
-     * Guru BK (Kelola) and Guru Piket (Input) may record violations.
-     */
     public function canRecord(): bool
     {
         return auth()->user()->canAny([
@@ -45,9 +45,32 @@ new #[Title('Pelanggaran')] class extends Component {
         ]);
     }
 
+   
+    public function canExport(): bool
+    {
+        $user = auth()->user();
+
+        return ! in_array($user->primaryRole(), [
+            UserRole::Siswa,
+            UserRole::OrangTua,
+        ]);
+    }
+
     public function isStudent(): bool
     {
         return auth()->user()->primaryRole() === UserRole::Siswa;
+    }
+
+    public function exportExcel(): BinaryFileResponse
+    {
+        abort_unless($this->canExport(), 403);
+
+        $export = new ViolationExport(
+            baseQuery: $this->scopedQuery(),
+            status: $this->status
+        );
+
+        return Excel::download($export, 'rekap_pelanggaran_'.now()->format('Ymd_His').'.xlsx');
     }
 
     /**
@@ -85,13 +108,21 @@ new #[Title('Pelanggaran')] class extends Component {
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Pelanggaran')"
         :subtitle="$this->isStudent() ? __('Riwayat pelanggaran Anda.') : __('Catat & verifikasi pelanggaran siswa.')">
-        @if ($this->canRecord())
-            <x-slot:actions>
+        
+        <x-slot:actions>
+            @if ($this->canExport())
+                <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
+                    {{ __('Export Excel') }}
+                </x-ui.button>
+            @endif
+
+            @if ($this->canRecord())
                 <x-ui.button variant="primary" icon="add-outline" :href="route('academic.violations.create')" wire:navigate>
                     {{ __('Catat Pelanggaran') }}
                 </x-ui.button>
-            </x-slot:actions>
-        @endif
+            @endif
+        </x-slot:actions>
+
     </x-ui.page-header>
 
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
