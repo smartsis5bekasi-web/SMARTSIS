@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\UserRole;
+use App\Exports\PointMonitoringExport;
+use App\Models\Classroom;
 use App\Models\PointSetting;
 use App\Models\Student;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -9,29 +11,106 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 new #[Title('Monitoring Poin')] class extends Component {
     use WithPagination;
 
-    /**
-     * Students scoped to what the signed-in role may monitor: wali kelas see
-     * their homeroom, orang tua see their children, everyone else sees all.
-     *
-     * @return LengthAwarePaginator<int, Student>
-     */
-    #[Computed]
-    public function students(): LengthAwarePaginator
+    public string $search = '';
+    public string $classroomId = '';
+    public string $status = '';
+
+    public function updatedSearch(): void
     {
-        return $this->scopedQuery()
-            ->with(['classroom', 'major'])
-            ->orderBy('name')
-            ->paginate(10);
+        $this->resetPage();
+    }
+
+    public function updatedClassroomId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function isStudent(): bool
+    {
+        return auth()->user()->primaryRole() === UserRole::Siswa;
+    }
+
+    public function canExport(): bool
+    {
+        $user = auth()->user();
+
+        return ! in_array($user->primaryRole(), [
+            UserRole::Siswa,
+            UserRole::OrangTua,
+        ]);
+    }
+
+    #[Computed]
+    public function classrooms()
+    {
+        return Classroom::query()->orderBy('name')->get();
     }
 
     #[Computed]
     public function setting(): PointSetting
     {
         return PointSetting::current();
+    }
+
+     /**
+     * Students scoped to what the signed-in role may monitor: wali kelas see
+     * their homeroom, orang tua see their children, everyone else sees all.
+     *
+     * @return LengthAwarePaginator<int, Student>
+     */
+    
+    #[Computed]
+    public function students(): LengthAwarePaginator
+    {
+        return $this->scopedQuery()
+            ->with(['classroom', 'major'])
+            ->when($this->search !== '', function (Builder $query) {
+                $query->where(function (Builder $q) {
+                    $q->where('name', 'like', '%' . $this->search . '%')
+                      ->orWhere('nis', 'like', '%' . $this->search . '%');
+                });
+            })
+            ->when($this->classroomId !== '', fn (Builder $query) => $query->where('classroom_id', $this->classroomId))
+            ->when($this->status !== '', function (Builder $query) {
+                $minPoint = $this->setting->min_point;
+                $targetPoint = $this->setting->target_point;
+
+                if ($this->status === 'below_minimum') {
+                    $query->where('current_point', '<', $minPoint);
+                } elseif ($this->status === 'warning') {
+                    $query->where('current_point', '>=', $minPoint)
+                          ->where('current_point', '<', $targetPoint * 0.75);
+                } elseif ($this->status === 'safe') {
+                    $query->where('current_point', '>=', $targetPoint * 0.75);
+                }
+            })
+            ->orderBy('name')
+            ->paginate(10);
+    }
+
+    public function exportExcel(): BinaryFileResponse
+    {
+        abort_unless($this->canExport(), 403);
+
+        $export = new PointMonitoringExport(
+            baseQuery: $this->scopedQuery(),
+            search: $this->search,
+            classroomId: $this->classroomId,
+            status: $this->status,
+        );
+
+        return Excel::download($export, 'rekap_poin_siswa_'.now()->format('Ymd_His').'.xlsx');
     }
 
     /**
@@ -57,16 +136,58 @@ new #[Title('Monitoring Poin')] class extends Component {
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Monitoring Poin')" :subtitle="__('Pantau poin disiplin siswa.')">
-        @can(App\Enums\Permission::ManagePoint->value)
-            <x-slot:actions>
+        <x-slot:actions>
+            @if ($this->canExport())
+                <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
+                    {{ __('Export Excel') }}
+                </x-ui.button>
+            @endif
+
+            @can(App\Enums\Permission::ManagePoint->value)
                 <x-ui.button variant="secondary" icon="settings-outline" :href="route('attendance.points')" wire:navigate>
                     {{ __('Pengaturan Poin') }}
                 </x-ui.button>
-            </x-slot:actions>
-        @endcan
+            @endcan
+        </x-slot:actions>
     </x-ui.page-header>
 
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
+        {{-- Bar Filter --}}
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">{{ __('Cari Siswa') }}</label>
+                <input type="text" 
+                    wire:model.live.debounce.300ms="search"
+                    placeholder="Nama atau NIS..."
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500" />
+            </div>
+
+            @unless ($this->isStudent())
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">{{ __('Kelas') }}</label>
+                    <select wire:model.live="classroomId"
+                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                        <option value="">{{ __('Semua Kelas') }}</option>
+                        @foreach ($this->classrooms as $classroom)
+                            <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endunless
+
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">{{ __('Status Poin') }}</label>
+                <select wire:model.live="status"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Status') }}</option>
+                    <option value="safe">{{ __('Aman') }}</option>
+                    <option value="warning">{{ __('Peringatan') }}</option>
+                    <option value="below_minimum">{{ __('Di Bawah Minimum') }}</option>
+                </select>
+            </div>
+        </div>
+
+        {{-- Tabel Data --}}
         <div class="rounded-2xl border overflow-auto">
             <table class="border-collapse min-w-full leading-normal">
                 <thead>
