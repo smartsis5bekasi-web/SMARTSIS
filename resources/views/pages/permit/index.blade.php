@@ -19,6 +19,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 new #[Title('Perizinan')] class extends Component {
     use WithPagination;
 
+    public string $search = '';
+
     public string $status = '';
 
     public string $type = '';
@@ -30,7 +32,7 @@ new #[Title('Perizinan')] class extends Component {
         }
     }
 
-    /**
+   /**
      * @return LengthAwarePaginator<int, Permit>
      */
     #[Computed]
@@ -38,6 +40,13 @@ new #[Title('Perizinan')] class extends Component {
     {
         return $this->scopedQuery()
             ->with(['student.classroom', 'decider'])
+            ->when(trim($this->search) !== '', function (Builder $query) {
+                $searchTerm = '%' . trim($this->search) . '%';
+                $query->whereHas('student', function (Builder $q) use ($searchTerm) {
+                    $q->where('name', 'like', $searchTerm)
+                      ->orWhere('nis', 'like', $searchTerm);
+                });
+            })
             ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
             ->when($this->type !== '', fn (Builder $query) => $query->where('type', $this->type))
             ->latest()
@@ -131,8 +140,20 @@ new #[Title('Perizinan')] class extends Component {
    <x-ui.page-header :title="__('Perizinan')"
         :subtitle="$this->isStudent() ? __('Ajukan izin dan pantau statusnya.') : __('Kelola & pantau pengajuan izin siswa.')">
         
-        <x-slot:actions>
+       <x-slot:actions>
             @if ($this->canDecideAny())
+                <x-ui.button 
+                    variant="secondary" 
+                    icon="print-outline" 
+                    :href="route('permits.print', [
+                        'search' => $this->search,
+                        'status' => $this->status,
+                        'type' => $this->type,
+                    ])" 
+                    target="_blank">
+                    {{ __('Cetak / Simpan PDF') }}
+                </x-ui.button>
+
                 <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
                     {{ __('Export Excel') }}
                 </x-ui.button>
@@ -149,6 +170,17 @@ new #[Title('Perizinan')] class extends Component {
 
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
         <div class="mb-4 flex flex-wrap items-center gap-3">
+            <div class="relative min-w-[240px]">
+                <input 
+                    type="text" 
+                    wire:model.live.debounce.300ms="search" 
+                    placeholder="{{ __('Cari nama / NIS siswa...') }}"
+                    class="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                    <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+                </div>
+            </div>
             <select wire:model.live="status"
                 class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 <option value="">{{ __('Semua Status') }}</option>

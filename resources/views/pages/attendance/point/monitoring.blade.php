@@ -136,19 +136,31 @@ new #[Title('Monitoring Poin')] class extends Component {
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Monitoring Poin')" :subtitle="__('Pantau poin disiplin siswa.')">
-        <x-slot:actions>
+       <x-slot:actions>
             @if ($this->canExport())
-                <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
-                    {{ __('Export Excel') }}
+                <x-ui.button 
+                    variant="secondary" 
+                    icon="print-outline" 
+                    :href="route('attendance.points.monitoring.print', [
+                        'search' => $this->search,
+                        'classroomId' => $this->classroomId,
+                        'status' => $this->status,
+                    ])" 
+                    target="_blank">
+                    {{ __('Cetak / Simpan PDF') }}
                 </x-ui.button>
-            @endif
 
-            @can(App\Enums\Permission::ManagePoint->value)
-                <x-ui.button variant="secondary" icon="settings-outline" :href="route('attendance.points')" wire:navigate>
-                    {{ __('Pengaturan Poin') }}
-                </x-ui.button>
-            @endcan
-        </x-slot:actions>
+        <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
+            {{ __('Export Excel') }}
+        </x-ui.button>
+    @endif
+
+    @can(App\Enums\Permission::ManagePoint->value)
+        <x-ui.button variant="secondary" icon="settings-outline" :href="route('attendance.points')" wire:navigate>
+            {{ __('Pengaturan Poin') }}
+        </x-ui.button>
+    @endcan
+</x-slot:actions>
     </x-ui.page-header>
 
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">

@@ -66,6 +66,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('point/monitoring', 'pages::attendance.point.monitoring')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points.monitoring');
+            Route::livewire('point/monitoring/cetak', 'pages::attendance.point.print')
+                ->middleware('permission:'.Permission::ViewPoint->value)
+                ->name('points.monitoring.print');
             Route::livewire('point/{student}/detail', 'pages::attendance.point.show')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points.show');
@@ -89,6 +92,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('ajukan', 'pages::permit.create')
                 ->middleware('permission:'.Permission::RequestPermit->value)
                 ->name('create');
+            Route::livewire('cetak', 'pages::permit.print')
+                ->middleware('permission:'.Permission::ManagePermit->value)
+                ->name('print');
             Route::livewire('{permit}', 'pages::permit.show')
                 ->middleware('permission:'.Permission::ViewPermit->value)
                 ->name('show');
