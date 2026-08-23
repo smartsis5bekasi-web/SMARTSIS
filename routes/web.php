@@ -138,6 +138,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('pelanggaran/catat', 'pages::academic.violation.create')
                 ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
                 ->name('violations.create');
+            Route::livewire('pelanggaran/cetak', 'pages::academic.violation.print')
+                ->middleware('permission:'.Permission::ViewViolation->value)
+                ->name('violations.print');
             Route::livewire('pelanggaran/{violation}/edit', 'pages::academic.violation.edit')
                 ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
                 ->name('violations.edit');

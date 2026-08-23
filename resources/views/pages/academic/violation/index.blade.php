@@ -17,6 +17,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 new #[Title('Pelanggaran')] class extends Component {
     use WithPagination;
 
+    public string $search = '';
+
     public string $status = '';
 
     public function updatedStatus(): void
@@ -111,6 +113,18 @@ new #[Title('Pelanggaran')] class extends Component {
         
         <x-slot:actions>
             @if ($this->canExport())
+                <x-ui.button 
+                    variant="secondary" 
+                    icon="print-outline" 
+                    :href="route('academic.violations.print', [
+                        'search' => $this->search,
+                        'status' => $this->status,
+                    ])" 
+                    target="_blank"
+                >
+                    {{ __('Cetak PDF') }}
+                </x-ui.button>
+
                 <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
                     {{ __('Export Excel') }}
                 </x-ui.button>
@@ -124,7 +138,6 @@ new #[Title('Pelanggaran')] class extends Component {
         </x-slot:actions>
 
     </x-ui.page-header>
-
     <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
         <div class="mb-4 flex items-center gap-2">
             <label class="text-sm text-gray-500">{{ __('Status') }}</label>

@@ -20,7 +20,7 @@
     use Livewire\Attributes\Title;
     use Livewire\Component;
     use Livewire\WithPagination;
-   use App\Exports\AttendanceDailyExports;  
+    use App\Exports\AttendanceDailyExports;  
     use Maatwebsite\Excel\Facades\Excel;
     use Symfony\Component\HttpFoundation\BinaryFileResponse;
 

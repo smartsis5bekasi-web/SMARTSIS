@@ -2,6 +2,7 @@
 
 use App\Models\Major;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -10,14 +11,26 @@ use Livewire\WithPagination;
 new #[Title('Jurusan')] class extends Component {
     use WithPagination;
 
+    public string $search = '';
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
     /**
      * @return LengthAwarePaginator<int, Major>
      */
-    #[Computed]
+   #[Computed]
     public function majors(): LengthAwarePaginator
     {
         return Major::query()
             ->withCount(['classrooms', 'students'])
+            ->when(filled($this->search), fn (Builder $query) => $query->where(
+                fn (Builder $inner) => $inner
+                    ->where('name', 'like', '%'.trim($this->search).'%')
+                    ->orWhere('code', 'like', '%'.trim($this->search).'%'),
+            ))
             ->orderBy('name')
             ->paginate(10);
     }
@@ -46,6 +59,26 @@ new #[Title('Jurusan')] class extends Component {
 
     <div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <div class="overflow-x-auto">
+             <div class="mb-6 flex flex-wrap items-center gap-3">
+        <div class="relative min-w-[240px] flex-1 sm:flex-none">
+            <input
+                type="text"
+                wire:model.live.debounce.300ms="search"
+                placeholder="{{ __('Cari nama atau kode jurusan...') }}"
+                class="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+            </div>
+        </div>
+
+        @if ($search !== '')
+            <button type="button" wire:click="$set('search', '')" class="text-xs font-medium text-red-600 hover:underline">
+                {{ __('Reset Pencarian') }}
+            </button>
+        @endif
+    </div>
+
             <table class="min-w-full border-collapse text-sm">
                 <thead>
                     <tr class="border-b border-gray-100 text-left text-gray-500">

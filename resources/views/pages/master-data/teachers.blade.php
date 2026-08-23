@@ -11,6 +11,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -27,6 +28,33 @@ new #[Title('Guru')] class extends Component {
     use WithPagination;
     use TogglesUserActiveStatus;
 
+    public string $search = '';
+
+    public string $role = '';
+
+    public string $status = '';
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedRole(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset(['search', 'role']);
+        $this->resetPage();
+    }
+
     public bool $showImportModal = false;
 
     public ?TemporaryUploadedFile $importFile = null;
@@ -34,14 +62,37 @@ new #[Title('Guru')] class extends Component {
     /** @var array<int, string> */
     public array $importErrors = [];
 
+    public function roleOptions(): array
+    {
+        return UserRole::teacherRoles();
+    }
+    
     /**
      * @return LengthAwarePaginator<int, Teacher>
      */
     #[Computed]
+
+
     public function teachers(): LengthAwarePaginator
     {
         return Teacher::query()
             ->with('user.roles')
+            ->when(filled($this->search), function (Builder $query) {
+                $term = '%'.trim($this->search).'%';
+                $query->where(function (Builder $q) use ($term) {
+                    $q->where('name', 'like', $term)
+                        ->orWhere('nip', 'like', $term)
+                        ->orWhereHas('user', fn (Builder $uq) => $uq->where('email', 'like', $term));
+                });
+            })
+            ->when($this->role !== '', fn (Builder $query) => $query->whereHas(
+                'user.roles',
+                fn (Builder $rq) => $rq->where('name', $this->role),
+            ))
+            ->when($this->status !== '', function (Builder $query) {
+                $isActive = $this->status === 'active';
+                $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive));
+            })
             ->orderBy('name')
             ->paginate(10);
     }
@@ -262,6 +313,46 @@ new #[Title('Guru')] class extends Component {
 
     <div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <div class="overflow-x-auto">
+             <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-1 flex-wrap items-center gap-3">
+                {{-- Search Input --}}
+                <div class="relative min-w-[240px] flex-1 sm:flex-none">
+                    <input
+                        type="text"
+                        wire:model.live.debounce.300ms="search"
+                        placeholder="{{ __('Cari nama, NIP, email...') }}"
+                        class="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+                    </div>
+                </div>
+
+                {{-- Filter Peran --}}
+                <select wire:model.live="role"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Peran') }}</option>
+                    @foreach (\App\Enums\UserRole::teacherRoles() as $roleOption)
+                        <option value="{{ $roleOption->value }}">{{ $roleOption->label() }}</option>
+                    @endforeach
+                </select>
+
+                <select wire:model.live="status"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Status') }}</option>
+                    <option value="active">{{ __('Aktif') }}</option>
+                    <option value="inactive">{{ __('Nonaktif') }}</option>
+                </select>
+
+
+                @if ($search !== '' || $role !== '')
+                    <button type="button" wire:click="resetFilters" class="text-xs font-medium text-red-600 hover:underline">
+                        {{ __('Reset Filter') }}
+                    </button>
+                @endif
+            </div>
+        </div>
+
             <table class="min-w-full border-collapse text-sm">
                 <thead>
                     <tr class="border-b border-gray-100 text-left text-gray-500">

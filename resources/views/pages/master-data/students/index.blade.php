@@ -12,6 +12,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -22,11 +24,22 @@ use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Livewire\Concerns\TogglesUserActiveStatus; 
 
+
 new #[Title('Siswa')] class extends Component {
     use ImportsSpreadsheetRows;
     use TogglesUserActiveStatus;
     use WithFileUploads;
     use WithPagination;
+
+    public string $search = '';
+
+    public string $classroomId = '';
+
+    public string $majorId = '';
+
+    public string $gender = '';
+
+    public string $status = '';
 
     public bool $showImportModal = false;
 
@@ -35,14 +48,79 @@ new #[Title('Siswa')] class extends Component {
     /** @var array<int, string> */
     public array $importErrors = [];
 
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedClassroomId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedMajorId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedGender(): void 
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset(['search', 'classroomId', 'majorId', 'gender', 'status']);
+        $this->resetPage();
+    }
+
     /**
-     * @return LengthAwarePaginator<int, Student>
+     * @return Collection<int, Classroom>
      */
     #[Computed]
+
+    public function classrooms(): Collection
+    {
+        return Classroom::query()->orderBy('name')->get();
+    }
+
+    /**
+     * @return Collection<int, Major>
+     */
+    #[Computed]
+    public function majors(): Collection
+    {
+        return Major::query()->orderBy('name')->get();
+    }
+
+   /**
+     * @return LengthAwarePaginator<int, Student>
+     */
+   #[Computed]
     public function students(): LengthAwarePaginator
     {
         return Student::query()
-            ->with(['classroom', 'major', 'teacher', 'parents'])
+            ->with(['classroom', 'major', 'teacher', 'parents', 'user'])
+            ->when(filled($this->search), function (Builder $query) {
+                $term = '%'.trim($this->search).'%';
+                $query->where(function (Builder $q) use ($term) {
+                    $q->where('name', 'like', $term)
+                        ->orWhere('nis', 'like', $term)
+                        ->orWhere('nisn', 'like', $term)
+                        ->orWhereHas('user', fn (Builder $uq) => $uq->where('email', 'like', $term));
+                });
+            })
+            ->when(filled($this->classroomId), fn (Builder $query) => $query->where('classroom_id', $this->classroomId))
+            ->when(filled($this->majorId), fn (Builder $query) => $query->where('major_id', $this->majorId))
+            ->when(filled($this->gender), fn (Builder $query) => $query->where('gender', $this->gender))
+            ->when($this->status !== '', function (Builder $query) {
+                $isActive = $this->status === 'active';
+                $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive)); })
             ->orderBy('name')
             ->paginate(10);
     }
@@ -290,6 +368,63 @@ new #[Title('Siswa')] class extends Component {
     
 <div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
     <div class="overflow-x-auto">
+        {{-- Section Search & Filter --}}
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-1 flex-wrap items-center gap-3">
+                {{-- Search Input --}}
+                <div class="relative min-w-[240px] flex-1 sm:flex-none">
+                    <input 
+                        type="text" 
+                        wire:model.live.debounce.300ms="search" 
+                        placeholder="{{ __('Cari nama, NIS, NISN, email...') }}"
+                        class="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+                    </div>
+                </div>
+
+                {{-- Filter Kelas --}}
+                <select wire:model.live="classroomId"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Kelas') }}</option>
+                    @foreach ($this->classrooms as $classroom)
+                        <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
+                    @endforeach
+                </select>
+
+                {{-- Filter Jurusan --}}
+                <select wire:model.live="majorId"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Jurusan') }}</option>
+                    @foreach ($this->majors as $major)
+                        <option value="{{ $major->id }}">{{ $major->name }}</option>
+                    @endforeach
+                </select>
+
+                {{-- Filter Jenis Kelamin --}}
+                <select wire:model.live="gender"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Gender') }}</option>
+                    <option value="L">{{ __('Laki-laki') }}</option>
+                    <option value="P">{{ __('Perempuan') }}</option>
+                </select>
+
+                {{-- Filter Status Akun --}}
+                <select wire:model.live="status"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Status') }}</option>
+                    <option value="active">{{ __('Aktif') }}</option>
+                    <option value="inactive">{{ __('Nonaktif') }}</option>
+                </select>
+
+                @if ($search !== '' || $classroomId !== '' || $majorId !== '' || $gender !== '' || $status !== '')
+                    <button type="button" wire:click="resetFilters" class="text-xs font-medium text-red-600 hover:underline">
+                        {{ __('Reset Filter') }}
+                    </button>
+                @endif
+            </div>
+        </div>
         <table class="min-w-full border-collapse text-sm">
             <thead>
                 <tr class="border-b border-gray-100 text-left text-gray-500">
