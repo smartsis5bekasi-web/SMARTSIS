@@ -4,11 +4,16 @@ use App\Enums\UserRole;
 use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 new #[Title('Tambah Guru')] class extends Component {
+    use WithFileUploads;
+
     public string $name = '';
 
     public string $email = '';
@@ -20,6 +25,8 @@ new #[Title('Tambah Guru')] class extends Component {
     public string $role = '';
 
     public string $password = '';
+
+    public ?TemporaryUploadedFile $avatar = null;
 
     /**
      * Roles a teacher account may hold.
@@ -43,6 +50,7 @@ new #[Title('Tambah Guru')] class extends Component {
             'phone' => ['nullable', 'string', 'max:30'],
             'role' => ['required', Rule::in(array_map(fn (UserRole $role): string => $role->value, $this->roleOptions()))],
             'password' => ['required', 'string', 'min:8'],
+            'avatar' => ['nullable', 'image', 'max:2048'],
         ];
     }
 
@@ -50,7 +58,13 @@ new #[Title('Tambah Guru')] class extends Component {
     {
         $data = $this->validate();
 
-        DB::transaction(function () use ($data): void {
+        $avatarUrl = null;
+
+        if ($this->avatar) {
+            $avatarUrl = Storage::url($this->avatar->store('teachers', 'public'));
+        }
+
+        DB::transaction(function () use ($data, $avatarUrl): void {
             $user = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -63,6 +77,7 @@ new #[Title('Tambah Guru')] class extends Component {
             Teacher::create([
                 'user_id' => $user->id,
                 'name' => $data['name'],
+                'avatar_url' => $avatarUrl,
                 'nip' => $data['nip'],
                 'phone' => $data['phone'],
             ]);
@@ -84,24 +99,34 @@ new #[Title('Tambah Guru')] class extends Component {
     </x-ui.page-header>
 
     <form wire:submit="save" class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div class="flex mb-4">
-                    <div class="flex flex-col mb-4 gap-2">
-                        <label class="font-semibold mt-3 mb-1">Foto Profil</label>
-                        <span for="avatar" class="text-xs block my-1">Keterangan Upload : (Maksimal: 2MB, Dimensi: 800x800 piksel)</span>
-                        <div id="image-preview-placeholder" class="h-[200px] w-[200px] rounded-2xl border-dashed border-2 border-primary bg-gray-300 cursor-pointer" onclick="document.getElementById('image-input').click()">
-                        <img id="preview-image" class="w-[195px] h-[195px] object-cover rounded-2xl" src="{{asset('assets/placeholder.png')}}" alt="Avatar Placeholder">
-                        </div>
-                        <input type="file" name="avatar" id="image-input" style="display: none;" onchange="previewImage(event)">
-                        @error('avatar')    
-                            <span class="mt-1 text-red-500">{{ $errors->first('avatar') }}</span>
-                        @enderror
-                    </div>
-                </div>
+         <div class="mb-8 flex flex-col gap-2" x-data="{ photoPreview: null }">
+    <label class="font-semibold text-gray-600">{{ __('Foto Profil') }}</label>
+    <span class="text-xs text-gray-500">{{ __('Keterangan Upload : (Maksimal: 2MB, Dimensi: 800x800 piksel)') }}</span>
+    <div class="h-[200px] w-[200px] cursor-pointer rounded-2xl border-2 border-dashed border-primary-400 bg-gray-100"
+        @click="$refs.avatar.click()">
+        <img class="h-[196px] w-[196px] rounded-2xl object-cover"
+            src="{{ asset('assets/placeholder.png') }}"
+            x-bind:src="photoPreview ?? '{{ asset('assets/placeholder.png') }}'"
+            alt="{{ __('Foto Profil') }}">
+    </div>
+    <input type="file" wire:model="avatar" x-ref="avatar" class="hidden" accept="image/*"
+        x-on:change="
+            const file = $refs.avatar.files[0];
+            if (! file) { photoPreview = null; return; }
+            const reader = new FileReader();
+            reader.onload = (e) => { photoPreview = e.target.result; };
+            reader.readAsDataURL(file);
+        ">
+    <div wire:loading wire:target="avatar" class="text-xs text-gray-500">{{ __('Mengunggah…') }}</div>
+    @error('avatar')
+        <span class="text-sm text-red-500">{{ $message }}</span>
+    @enderror
+</div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
            
             <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Nama Lengkap') }} <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="name" placeholder="Budi Santoso"
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Nama Lengkap + jabatan') }} <span class="text-red-500">*</span></label>
+                <input type="text" wire:model="name" placeholder="Budi Santoso_Guru BK"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('name')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>

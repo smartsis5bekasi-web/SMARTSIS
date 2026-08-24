@@ -29,6 +29,7 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('kelas/{classroom}/edit', 'pages::master-data.classrooms.edit')->name('classrooms.edit');
             Route::livewire('guru', 'pages::master-data.teachers')->name('teachers');
             Route::livewire('guru/tambah', 'pages::master-data.teachers.create')->name('teachers.create');
+            Route::livewire('guru/{teacher}', 'pages::master-data.teachers.show')->name('teachers.show');
             Route::livewire('guru/{teacher}/edit', 'pages::master-data.teachers.edit')->name('teachers.edit');
             Route::livewire('siswa', 'pages::master-data.students.index')->name('students.index');
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');

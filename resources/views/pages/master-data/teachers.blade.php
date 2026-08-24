@@ -356,6 +356,7 @@ new #[Title('Guru')] class extends Component {
             <table class="min-w-full border-collapse text-sm">
                 <thead>
                     <tr class="border-b border-gray-100 text-left text-gray-500">
+                        <th class="px-4 py-3 font-medium">{{ __('Foto') }}</th>
                         <th class="px-4 py-3 font-medium">{{ __('Nama') }}</th>
                         <th class="px-4 py-3 font-medium">NIP</th>
                         <th class="px-4 py-3 font-medium">{{ __('Email') }}</th>
@@ -368,6 +369,10 @@ new #[Title('Guru')] class extends Component {
                 <tbody class="divide-y divide-gray-100 text-gray-700">
                     @forelse ($this->teachers as $teacher)
                         <tr wire:key="{{ $teacher->id }}" class="hover:bg-gray-50">
+                            <td class="px-4 py-3">
+                            <img class="h-10 w-10 rounded-full border border-gray-200 object-cover shadow-sm sm:h-12 sm:w-12"
+                                src="{{ $teacher->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $teacher->name }}" />
+                        </td>
                             <td class="px-4 py-3 font-medium text-gray-900">{{ $teacher->name }}</td>
                             <td class="px-4 py-3">{{ $teacher->nip ?? '—' }}</td>
                             <td class="px-4 py-3">{{ $teacher->user?->email ?? '—' }}</td>
@@ -382,13 +387,16 @@ new #[Title('Guru')] class extends Component {
                             </td>
                             <td class="px-4 py-3">{{ $teacher->phone ?? '—' }}</td>
                             <td class="px-4 py-3">
-                                <div class="flex items-center justify-end gap-3">
-                                    <a href="{{ route('master-data.teachers.edit', $teacher) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Edit') }}">
-                                        <ion-icon name="create-outline" class="text-xl"></ion-icon>
-                                    </a>
-                                    <x-ui.delete-button :wire-id="$teacher->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
-                                </div>
-                            </td>
+                            <div class="flex items-center justify-end gap-3">
+                                <a href="{{ route('master-data.teachers.show', $teacher) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Lihat') }}">
+                                    <ion-icon name="eye-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <a href="{{ route('master-data.teachers.edit', $teacher) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Edit') }}">
+                                    <ion-icon name="create-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <x-ui.delete-button :wire-id="$teacher->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
+                            </div>
+                        </td>
                             <td class="px-4 py-3 text-right">
                                 <x-ui.status-toggle :user="$teacher->user" :method="'toggleActive'" />
                             </td>
