@@ -26,7 +26,7 @@ class ParentGuardian extends Model
 
     protected $table = 'parents';
 
-    protected $fillable = ['user_id', 'name', 'phone'];
+    protected $fillable = ['user_id', 'name','avatar_url', 'phone', 'email', 'password',];
 
     /**
      * @return BelongsTo<User, $this>

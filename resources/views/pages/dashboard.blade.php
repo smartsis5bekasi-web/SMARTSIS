@@ -48,11 +48,15 @@ new #[Title('Dashboard')] class extends Component
     /**
      * Summary cards tailored to the signed-in role.
      *
-     * @return array<int, array{label: string, value: int|string, icon: string}>
+     * @return array<int, array{label: string, value: int|string, icon: string, detail?: array<string, int>}>
      */
     #[Computed]
     public function stats(): array
     {
+        $pendingPermits = Permit::where('status', PermitStatus::Pending)->count();
+        $pendingViolations = Violation::where('status', PointApprovalStatus::Pending)->count();
+        $pendingAchievements = Achievement::where('status', PointApprovalStatus::Pending)->count();
+
         return match (true) {
             $this->isLeadership() => [
                 ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
@@ -61,17 +65,41 @@ new #[Title('Dashboard')] class extends Component
                 ['label' => 'Total Orang Tua', 'value' => ParentGuardian::count(), 'icon' => 'user-group'],
             ],
             $this->role() === UserRole::GuruBk => [
-                ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
-                ['label' => 'Total Kelas', 'value' => Classroom::count(), 'icon' => 'building-library'],
-                ['label' => 'Rata-rata Poin', 'value' => (int) round((float) Student::avg('current_point')), 'icon' => 'chart-bar'],
-                ['label' => 'Perlu Pembinaan', 'value' => Student::where('current_point', '<', 50)->count(), 'icon' => 'exclamation-triangle'],
+                [
+                    'label' => 'Perlu Konseling',
+                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'konseling'))->count(),
+                    'icon' => 'chat-bubble-left-right',
+                ],
+                [
+                    'label' => 'Perlu Pembinaan',
+                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'pembinaan'))->count(),
+                    'icon' => 'exclamation-triangle',
+                ],
+                [
+                    'label' => 'Pemanggilan Ortu',
+                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'sp_ortu'))->count(),
+                    'icon' => 'user-minus',
+                ],
+                [
+                    'label' => 'Perlu Persetujuan',
+                    'value' => $pendingPermits + $pendingViolations + $pendingAchievements,
+                    'icon' => 'clipboard-document-check',
+                    'detail' => [
+                        'Izin' => $pendingPermits,
+                        'Langgar' => $pendingViolations,
+                        'Prestasi' => $pendingAchievements,
+                    ],
+                ],
             ],
             $this->role() === UserRole::WaliKelas => $this->waliKelasStats(),
             in_array($this->role(), [UserRole::GuruPiket, UserRole::GuruMapel], true) => [
                 ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
                 ['label' => 'Total Kelas', 'value' => Classroom::count(), 'icon' => 'building-library'],
             ],
-            default => [],
+            default => [
+                ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
+                ['label' => 'Total Kelas', 'value' => Classroom::count(), 'icon' => 'building-library'],
+            ],
         };
     }
 
@@ -108,6 +136,57 @@ new #[Title('Dashboard')] class extends Component
     public function recentStudents(): Collection
     {
         return Student::with('classroom')->latest()->take(8)->get();
+    }
+
+    /**
+     * Siswa yang memerlukan tindakan bimbingan konseling / pembinaan (Guru BK).
+     *
+     * @return Collection<int, Student>
+     */
+    #[Computed]
+    public function warningStudents(): Collection
+    {
+        return Student::with('classroom')
+            ->withCount(['attendances as alpha_count' => function ($query) {
+                $query->where('status', AttendanceStatus::Alpha);
+            }])
+            ->where(function ($query) {
+                $query->where('current_point', '<', 70)
+                      ->orWhereHas('attendances', function ($q) {
+                          $q->where('status', AttendanceStatus::Alpha);
+                      }, '>', 5);
+            })
+            ->get()
+            ->map(function ($student) {
+                $recommendations = [];
+
+                if ($student->alpha_count > 5) {
+                    $recommendations[] = [
+                        'label' => 'Konseling',
+                        'color' => 'bg-blue-100 text-blue-700 border-blue-200',
+                        'action' => 'konseling',
+                    ];
+                }
+
+                if ($student->current_point < 70 && $student->current_point >= 50) {
+                    $recommendations[] = [
+                        'label' => 'Pembinaan',
+                        'color' => 'bg-amber-100 text-amber-700 border-amber-200',
+                        'action' => 'pembinaan',
+                    ];
+                }
+
+                if ($student->current_point < 50) {
+                    $recommendations[] = [
+                        'label' => 'Pemanggilan Ortu',
+                        'color' => 'bg-red-100 text-red-700 border-red-200',
+                        'action' => 'sp_ortu',
+                    ];
+                }
+
+                $student->recommendations = $recommendations;
+                return $student;
+            });
     }
 
     /**
@@ -267,8 +346,7 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Issued warning letters by level (all-time — SP1..SP3 are rare enough
-     * that a monthly window would mostly read empty).
+     * Issued warning letters by level.
      *
      * @return array<int, array{label: string, value: int, color: string}>
      */
@@ -343,8 +421,7 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Discipline-point deductions per month over the last 6 months (see
-     * {@see pointAdditionsTrend()}).
+     * Discipline-point deductions per month over the last 6 months.
      *
      * @return array<int, array{label: string, value: int}>
      */
@@ -355,8 +432,7 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Monthly point-log totals of the given type, scoped to
-     * {@see scopedStudentIds()}, over the last 6 months.
+     * Monthly point-log totals of the given type.
      *
      * @return array<int, array{label: string, value: int}>
      */
@@ -389,9 +465,7 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Student ids the signed-in role's charts should be scoped to; null
-     * means every student — leadership, guru piket, guru mapel, and guru bk
-     * all monitor the whole school per the PRD access matrix.
+     * Student ids the signed-in role's charts should be scoped to.
      *
      * @return \Illuminate\Support\Collection<int, int>|null
      */
@@ -434,213 +508,231 @@ new #[Title('Dashboard')] class extends Component
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-        {{-- Header --}}
-        <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-                <flux:heading size="xl">{{ __('Selamat datang, :name', ['name' => auth()->user()->name]) }}</flux:heading>
-                <flux:text class="mt-1">
-                    @if ($this->role)
-                        <flux:badge color="violet" size="sm">{{ $this->role->label() }}</flux:badge>
-                    @endif
-                </flux:text>
-            </div>
-
-            @if ($this->activeYear)
-                <flux:badge color="amber" size="lg" icon="calendar-days">
-                    {{ __('Tahun Ajaran') }} {{ $this->activeYear->name }}
-                </flux:badge>
-            @endif
+    {{-- Header --}}
+    <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+            <flux:heading size="xl">{{ __('Selamat datang, :name', ['name' => auth()->user()->name]) }}</flux:heading>
+            <flux:text class="mt-1">
+                @if ($this->role)
+                    <flux:badge color="violet" size="sm">{{ $this->role->label() }}</flux:badge>
+                @endif
+            </flux:text>
         </div>
 
-        {{-- Stat cards --}}
-        @if (count($this->stats) > 0)
-            <div class="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                @foreach ($this->stats as $stat)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-5">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="min-w-0">
-                                <flux:text class="text-sm">{{ $stat['label'] }}</flux:text>
-                                <flux:heading size="xl" class="mt-1 truncate">{{ $stat['value'] }}</flux:heading>
-                            </div>
-                            <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-                                <flux:icon :name="$stat['icon']" class="size-6" />
-                            </div>
+        @if ($this->activeYear)
+            <flux:badge color="amber" size="lg" icon="calendar-days">
+                {{ __('Tahun Ajaran') }} {{ $this->activeYear->name }}
+            </flux:badge>
+        @endif
+    </div>
+
+    {{-- Stat cards --}}
+    @if (count($this->stats) > 0)
+        <div class="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            @foreach ($this->stats as $stat)
+                <div class="flex flex-col justify-between rounded-xl border border-zinc-200 bg-white p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <flux:text class="text-sm font-medium">{{ $stat['label'] ?? '' }}</flux:text>
+                            <flux:heading size="xl" class="mt-1 truncate">{{ $stat['value'] ?? '' }}</flux:heading>
+                        </div>
+                        <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                            <flux:icon :name="$stat['icon']" class="size-6" />
                         </div>
                     </div>
-                @endforeach
-            </div>
-        @endif
 
-        {{-- Role-specific detail --}}
-        @php($role = $this->role)
-
-        @if ($role === UserRole::Siswa && $this->student)
-            @php($student = $this->student)
-            <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                <flux:heading size="lg">{{ __('Profil Siswa') }}</flux:heading>
-                <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <div>
-                        <flux:text class="text-sm">NIS</flux:text>
-                        <flux:heading class="mt-1">{{ $student->nis }}</flux:heading>
-                    </div>
-                    <div>
-                        <flux:text class="text-sm">{{ __('Kelas') }}</flux:text>
-                        <flux:heading class="mt-1">{{ $student->classroom?->name ?? '—' }}</flux:heading>
-                    </div>
-                    <div>
-                        <flux:text class="text-sm">{{ __('Jurusan') }}</flux:text>
-                        <flux:heading class="mt-1">{{ $student->major?->name ?? '—' }}</flux:heading>
-                    </div>
-                    <div>
-                        <flux:text class="text-sm">{{ __('Poin Disiplin') }}</flux:text>
-                        <flux:heading class="mt-1">
-                            <flux:badge size="lg" :color="$student->current_point >= 75 ? 'green' : ($student->current_point >= 50 ? 'amber' : 'red')">
-                                {{ $student->current_point }}
-                            </flux:badge>
-                        </flux:heading>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Development Point overview --}}
-            @php($point = $this->pointSummary)
-            <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                <div class="flex items-center justify-between">
-                    <flux:heading size="lg">{{ __('Development Point') }}</flux:heading>
-                    @if ($point['belowMin'])
-                        <flux:badge color="red" size="sm">{{ __('Di Bawah Minimum') }}</flux:badge>
-                    @else
-                        <flux:badge color="green" size="sm">{{ __('Aman') }}</flux:badge>
+                    {{-- Tampilkan detail breakdown jika ada --}}
+                    @if (isset($stat['detail']))
+                        <div class="mt-3 flex items-center justify-between border-t border-zinc-100 pt-2.5 text-xs text-zinc-500">
+                            <span>Izin: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Izin'] }}</strong></span>
+                            <span class="text-zinc-300">•</span>
+                            <span>Langgar: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Langgar'] }}</strong></span>
+                            <span class="text-zinc-300">•</span>
+                            <span>Prestasi: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Prestasi'] }}</strong></span>
+                        </div>
                     @endif
                 </div>
+            @endforeach
+        </div>
+    @endif
 
-                <div class="mt-4 flex items-end justify-between">
-                    <flux:text class="text-sm">{{ __('Total Points') }}</flux:text>
-                    <flux:heading class="tabular-nums">{{ $point['current'] }} <span class="text-sm font-normal text-zinc-400">{{ __('of') }} {{ $point['target'] }}</span></flux:heading>
-                </div>
-                <div class="mt-2 h-3 w-full overflow-hidden rounded-full bg-zinc-100">
-                    <div class="h-full rounded-full bg-primary-600 transition-all" style="width: {{ $point['progress'] }}%"></div>
-                </div>
+    {{-- Role-specific detail --}}
+    @php($role = $this->role)
 
-                <div class="mt-4 flex justify-end">
-                    <flux:link :href="route('attendance.points.show', $student)" wire:navigate class="text-sm font-medium">
-                        {{ __('View More Detail') }} →
-                    </flux:link>
+    @if ($role === UserRole::Siswa && $this->student)
+        @php($student = $this->student)
+        <div class="rounded-xl border border-zinc-200 bg-white p-6">
+            <flux:heading size="lg">{{ __('Profil Siswa') }}</flux:heading>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                    <flux:text class="text-sm">NIS</flux:text>
+                    <flux:heading class="mt-1">{{ $student->nis }}</flux:heading>
+                </div>
+                <div>
+                    <flux:text class="text-sm">{{ __('Kelas') }}</flux:text>
+                    <flux:heading class="mt-1">{{ $student->classroom?->name ?? '—' }}</flux:heading>
+                </div>
+                <div>
+                    <flux:text class="text-sm">{{ __('Jurusan') }}</flux:text>
+                    <flux:heading class="mt-1">{{ $student->major?->name ?? '—' }}</flux:heading>
+                </div>
+                <div>
+                    <flux:text class="text-sm">{{ __('Poin Disiplin') }}</flux:text>
+                    <flux:heading class="mt-1">
+                        <flux:badge size="lg" :color="$student->current_point >= 75 ? 'green' : ($student->current_point >= 50 ? 'amber' : 'red')">
+                            {{ $student->current_point }}
+                        </flux:badge>
+                    </flux:heading>
                 </div>
             </div>
-        @elseif ($role === UserRole::OrangTua)
-            <div class="rounded-xl border border-zinc-200 bg-white">
-                <div class="border-b border-zinc-200 p-5">
-                    <flux:heading size="lg">{{ __('Anak / Siswa Terkait') }}</flux:heading>
+        </div>
+
+        {{-- Development Point overview --}}
+        @php($point = $this->pointSummary)
+        <div class="rounded-xl border border-zinc-200 bg-white p-6">
+            <div class="flex items-center justify-between">
+                <flux:heading size="lg">{{ __('Development Point') }}</flux:heading>
+                @if ($point['belowMin'])
+                    <flux:badge color="red" size="sm">{{ __('Di Bawah Minimum') }}</flux:badge>
+                @else
+                    <flux:badge color="green" size="sm">{{ __('Aman') }}</flux:badge>
+                @endif
+            </div>
+
+            <div class="mt-4 flex items-end justify-between">
+                <flux:text class="text-sm">{{ __('Total Points') }}</flux:text>
+                <flux:heading class="tabular-nums">{{ $point['current'] }} <span class="text-sm font-normal text-zinc-400">{{ __('of') }} {{ $point['target'] }}</span></flux:heading>
+            </div>
+            <div class="mt-2 h-3 w-full overflow-hidden rounded-full bg-zinc-100">
+                <div class="h-full rounded-full bg-primary-600 transition-all" style="width: {{ $point['progress'] }}%"></div>
+            </div>
+
+            <div class="mt-4 flex justify-end">
+                <flux:link :href="route('attendance.points.show', $student)" wire:navigate class="text-sm font-medium">
+                    {{ __('View More Detail') }} →
+                </flux:link>
+            </div>
+        </div>
+    @elseif ($role === UserRole::OrangTua)
+        <div class="rounded-xl border border-zinc-200 bg-white">
+            <div class="border-b border-zinc-200 p-5">
+                <flux:heading size="lg">{{ __('Anak / Siswa Terkait') }}</flux:heading>
+            </div>
+            @include('partials.dashboard-student-table', ['students' => $this->children, 'empty' => __('Belum ada siswa yang terhubung.')])
+        </div>
+    @elseif ($role === UserRole::WaliKelas)
+        <div class="rounded-xl border border-zinc-200 bg-white">
+            <div class="border-b border-zinc-200 p-5">
+                <flux:heading size="lg">{{ __('Siswa Kelas :name', ['name' => $this->homeroomClass?->name ?? '—']) }}</flux:heading>
+            </div>
+            @include('partials.dashboard-student-table', ['students' => $this->classStudents, 'empty' => __('Belum ada siswa di kelas ini.')])
+        </div>
+    @elseif ($role === UserRole::GuruBk)
+        <div class="rounded-xl border border-zinc-200 bg-white">
+            <div class="border-b border-zinc-200 p-5">
+                <flux:heading size="lg">{{ __('Siswa Perlu Tindakan / Pembinaan') }}</flux:heading>
+            </div>
+            @include('partials.dashboard-bk-table', ['warningStudents' => $this->warningStudents])
+        </div>
+    @elseif ($this->isLeadership())
+        <div class="rounded-xl border border-zinc-200 bg-white">
+            <div class="border-b border-zinc-200 p-5">
+                <flux:heading size="lg">{{ __('Siswa Terbaru') }}</flux:heading>
+            </div>
+            @include('partials.dashboard-student-table', ['students' => $this->recentStudents, 'empty' => __('Belum ada data siswa.')])
+        </div>
+    @elseif (! $role)
+        <div class="rounded-xl border border-zinc-200 bg-white p-6">
+            <flux:heading size="lg">{{ __('Dashboard') }}</flux:heading>
+            <flux:text class="mt-2">{{ __('Akun Anda belum memiliki peran. Hubungi administrator sekolah.') }}</flux:text>
+        </div>
+    @endif
+
+    {{-- Chart summaries --}}
+    @canany([
+        Permission::ViewAttendance->value,
+        Permission::ViewPoint->value,
+        Permission::ViewViolation->value,
+        Permission::ViewAchievement->value,
+        Permission::ViewWarning->value,
+        Permission::ViewPermit->value,
+    ])
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            @can(Permission::ViewAttendance->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Tren Kehadiran Bulan Ini') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('Jumlah hadir & terlambat per hari.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.bar :data="$this->attendanceTrend" :label-every="5" />
+                    </div>
                 </div>
-                @include('partials.dashboard-student-table', ['students' => $this->children, 'empty' => __('Belum ada siswa yang terhubung.')])
-            </div>
-        @elseif ($role === UserRole::WaliKelas)
-            <div class="rounded-xl border border-zinc-200 bg-white">
-                <div class="border-b border-zinc-200 p-5">
-                    <flux:heading size="lg">{{ __('Siswa Kelas :name', ['name' => $this->homeroomClass?->name ?? '—']) }}</flux:heading>
+
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Distribusi Status Kehadiran') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('Komposisi status bulan ini.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.distribution :data="$this->attendanceStatusBreakdown" />
+                    </div>
                 </div>
-                @include('partials.dashboard-student-table', ['students' => $this->classStudents, 'empty' => __('Belum ada siswa di kelas ini.')])
-            </div>
-        @elseif ($this->isLeadership() || $role === UserRole::GuruBk)
-            <div class="rounded-xl border border-zinc-200 bg-white">
-                <div class="border-b border-zinc-200 p-5">
-                    <flux:heading size="lg">{{ __('Siswa Terbaru') }}</flux:heading>
+            @endcan
+
+            @can(Permission::ViewPoint->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Penambahan Poin') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.bar :data="$this->pointAdditionsTrend" color="bg-green-500" />
+                    </div>
                 </div>
-                @include('partials.dashboard-student-table', ['students' => $this->recentStudents, 'empty' => __('Belum ada data siswa.')])
-            </div>
-        @elseif (! $role)
-            <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                <flux:heading size="lg">{{ __('Dashboard') }}</flux:heading>
-                <flux:text class="mt-2">{{ __('Akun Anda belum memiliki peran. Hubungi administrator sekolah.') }}</flux:text>
-            </div>
-        @endif
 
-        {{-- Chart summaries, scoped to own/homeroom/school-wide data per role (see scopedStudentIds()) --}}
-        @canany([
-            Permission::ViewAttendance->value,
-            Permission::ViewPoint->value,
-            Permission::ViewViolation->value,
-            Permission::ViewAchievement->value,
-            Permission::ViewWarning->value,
-            Permission::ViewPermit->value,
-        ])
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                @can(Permission::ViewAttendance->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Tren Kehadiran Bulan Ini') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('Jumlah hadir & terlambat per hari.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.bar :data="$this->attendanceTrend" :label-every="5" />
-                        </div>
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Pengurangan Poin') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.bar :data="$this->pointDeductionsTrend" color="bg-red-500" />
                     </div>
+                </div>
+            @endcan
 
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Distribusi Status Kehadiran') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('Komposisi status bulan ini.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.distribution :data="$this->attendanceStatusBreakdown" />
-                        </div>
+            @can(Permission::ViewViolation->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Pelanggaran Terbanyak') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('5 jenis teratas bulan ini.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.ranked-list :data="$this->violationBreakdown" color="bg-red-400" :empty="__('Belum ada pelanggaran bulan ini.')" />
                     </div>
-                @endcan
+                </div>
+            @endcan
 
-                @can(Permission::ViewPoint->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Penambahan Poin') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.bar :data="$this->pointAdditionsTrend" color="bg-green-500" />
-                        </div>
+            @can(Permission::ViewAchievement->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Prestasi per Tingkat') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('Prestasi disetujui bulan ini.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.ranked-list :data="$this->achievementBreakdown" color="bg-green-400" :empty="__('Belum ada prestasi bulan ini.')" />
                     </div>
+                </div>
+            @endcan
 
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Pengurangan Poin') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('6 bulan terakhir.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.bar :data="$this->pointDeductionsTrend" color="bg-red-500" />
-                        </div>
+            @can(Permission::ViewWarning->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Surat Peringatan') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('Surat diterbitkan per level.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.distribution :data="$this->warningBreakdown" />
                     </div>
-                @endcan
+                </div>
+            @endcan
 
-                @can(Permission::ViewViolation->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Pelanggaran Terbanyak') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('5 jenis teratas bulan ini.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.ranked-list :data="$this->violationBreakdown" color="bg-red-400" :empty="__('Belum ada pelanggaran bulan ini.')" />
-                        </div>
+            @can(Permission::ViewPermit->value)
+                <div class="rounded-xl border border-zinc-200 bg-white p-6">
+                    <flux:heading size="lg">{{ __('Status Perizinan') }}</flux:heading>
+                    <flux:text class="mt-1 text-sm">{{ __('Pengajuan bulan ini.') }}</flux:text>
+                    <div class="mt-4">
+                        <x-charts.distribution :data="$this->permitBreakdown" />
                     </div>
-                @endcan
-
-                @can(Permission::ViewAchievement->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Prestasi per Tingkat') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('Prestasi disetujui bulan ini.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.ranked-list :data="$this->achievementBreakdown" color="bg-green-400" :empty="__('Belum ada prestasi bulan ini.')" />
-                        </div>
-                    </div>
-                @endcan
-
-                @can(Permission::ViewWarning->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Surat Peringatan') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('Surat diterbitkan per level.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.distribution :data="$this->warningBreakdown" />
-                        </div>
-                    </div>
-                @endcan
-
-                @can(Permission::ViewPermit->value)
-                    <div class="rounded-xl border border-zinc-200 bg-white p-6">
-                        <flux:heading size="lg">{{ __('Status Perizinan') }}</flux:heading>
-                        <flux:text class="mt-1 text-sm">{{ __('Pengajuan bulan ini.') }}</flux:text>
-                        <div class="mt-4">
-                            <x-charts.distribution :data="$this->permitBreakdown" />
-                        </div>
-                    </div>
-                @endcan
-            </div>
-        @endcanany
-    </div>
+                </div>
+            @endcan
+        </div>
+    @endcanany
+</div>

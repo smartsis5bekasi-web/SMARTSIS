@@ -35,6 +35,10 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
             Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
+            Route::livewire('orang-tua', 'pages::master-data.parents.index')->name('parents.index');
+            Route::livewire('orang-tua/tambah', 'pages::master-data.parents.create')->name('parents.create');
+            Route::livewire('orang-tua/{parent}', 'pages::master-data.parents.show')->name('parents.show');
+            Route::livewire('orang-tua/{parent}/edit', 'pages::master-data.parents.edit')->name('parents.edit');
         });
 
     Route::middleware('role:'.UserRole::WaliKelas->value)
