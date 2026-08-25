@@ -11,7 +11,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('onboarding', 'pages::onboarding.index')->name('onboarding');
 });
 
-Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () {
+Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
 
     Route::middleware('permission:'.Permission::ManageMasterData->value)
@@ -29,10 +29,12 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('kelas/{classroom}/edit', 'pages::master-data.classrooms.edit')->name('classrooms.edit');
             Route::livewire('guru', 'pages::master-data.teachers')->name('teachers');
             Route::livewire('guru/tambah', 'pages::master-data.teachers.create')->name('teachers.create');
+            Route::livewire('guru/{teacher}', 'pages::master-data.teachers.show')->name('teachers.show');
             Route::livewire('guru/{teacher}/edit', 'pages::master-data.teachers.edit')->name('teachers.edit');
             Route::livewire('siswa', 'pages::master-data.students.index')->name('students.index');
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
+            Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
         });
 
     Route::middleware('role:'.UserRole::WaliKelas->value)
@@ -65,6 +67,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('point/monitoring', 'pages::attendance.point.monitoring')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points.monitoring');
+            Route::livewire('point/monitoring/cetak', 'pages::attendance.point.print')
+                ->middleware('permission:'.Permission::ViewPoint->value)
+                ->name('points.monitoring.print');
             Route::livewire('point/{student}/detail', 'pages::attendance.point.show')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points.show');
@@ -88,6 +93,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('ajukan', 'pages::permit.create')
                 ->middleware('permission:'.Permission::RequestPermit->value)
                 ->name('create');
+            Route::livewire('cetak', 'pages::permit.print')
+                ->middleware('permission:'.Permission::ManagePermit->value)
+                ->name('print');
             Route::livewire('{permit}', 'pages::permit.show')
                 ->middleware('permission:'.Permission::ViewPermit->value)
                 ->name('show');
@@ -131,6 +139,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             Route::livewire('pelanggaran/catat', 'pages::academic.violation.create')
                 ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
                 ->name('violations.create');
+            Route::livewire('pelanggaran/cetak', 'pages::academic.violation.print')
+                ->middleware('permission:'.Permission::ViewViolation->value)
+                ->name('violations.print');
             Route::livewire('pelanggaran/{violation}/edit', 'pages::academic.violation.edit')
                 ->middleware('permission:'.Permission::InputViolation->value.'|'.Permission::ManageViolation->value)
                 ->name('violations.edit');

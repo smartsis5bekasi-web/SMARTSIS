@@ -12,6 +12,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -20,11 +22,24 @@ use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use App\Livewire\Concerns\TogglesUserActiveStatus; 
+
 
 new #[Title('Siswa')] class extends Component {
     use ImportsSpreadsheetRows;
+    use TogglesUserActiveStatus;
     use WithFileUploads;
     use WithPagination;
+
+    public string $search = '';
+
+    public string $classroomId = '';
+
+    public string $majorId = '';
+
+    public string $gender = '';
+
+    public string $status = '';
 
     public bool $showImportModal = false;
 
@@ -33,20 +48,87 @@ new #[Title('Siswa')] class extends Component {
     /** @var array<int, string> */
     public array $importErrors = [];
 
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedClassroomId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedMajorId(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedGender(): void 
+    {
+        $this->resetPage();
+    }
+
+    public function updatedStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset(['search', 'classroomId', 'majorId', 'gender', 'status']);
+        $this->resetPage();
+    }
+
     /**
-     * @return LengthAwarePaginator<int, Student>
+     * @return Collection<int, Classroom>
      */
     #[Computed]
+
+    public function classrooms(): Collection
+    {
+        return Classroom::query()->orderBy('name')->get();
+    }
+
+    /**
+     * @return Collection<int, Major>
+     */
+    #[Computed]
+    public function majors(): Collection
+    {
+        return Major::query()->orderBy('name')->get();
+    }
+
+   /**
+     * @return LengthAwarePaginator<int, Student>
+     */
+   #[Computed]
     public function students(): LengthAwarePaginator
     {
         return Student::query()
-            ->with(['classroom', 'major', 'teacher', 'parents'])
+            ->with(['classroom', 'major', 'teacher', 'parents', 'user'])
+            ->when(filled($this->search), function (Builder $query) {
+                $term = '%'.trim($this->search).'%';
+                $query->where(function (Builder $q) use ($term) {
+                    $q->where('name', 'like', $term)
+                        ->orWhere('nis', 'like', $term)
+                        ->orWhere('nisn', 'like', $term)
+                        ->orWhereHas('user', fn (Builder $uq) => $uq->where('email', 'like', $term));
+                });
+            })
+            ->when(filled($this->classroomId), fn (Builder $query) => $query->where('classroom_id', $this->classroomId))
+            ->when(filled($this->majorId), fn (Builder $query) => $query->where('major_id', $this->majorId))
+            ->when(filled($this->gender), fn (Builder $query) => $query->where('gender', $this->gender))
+            ->when($this->status !== '', function (Builder $query) {
+                $isActive = $this->status === 'active';
+                $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive)); })
             ->orderBy('name')
             ->paginate(10);
     }
 
     public function delete(Student $student): void
     {
+        $student->loadMissing('user');
+        $student->user?->delete();
         $student->delete();
 
         $this->dispatch('swal', icon: 'success', title: __('Siswa dihapus.'));
@@ -269,7 +351,7 @@ new #[Title('Siswa')] class extends Component {
     }
 }; ?>
 
-<div class="justify-center max-xl:w-full">
+<div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Siswa')" :subtitle="__('Kelola data siswa.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="download-outline" wire:click="export">
@@ -283,84 +365,129 @@ new #[Title('Siswa')] class extends Component {
             </x-ui.button>
         </x-slot:actions>
     </x-ui.page-header>
-     <div class="flex-col bg-white rounded-xl p-8 drop-shadow-lg mt-5">
-           <div class="rounded-2xl border bg-gray-100 overflow-auto">
-            <table class="border-collapse rounded-2xl min-w-full leading-normal">
-                <thead class="rounded-2xl">
-                    <tr class="rounded-2xl text-gray-500 font-normal text-md text-left whitespace-nowrap">
-                        <th class="py-2.5 px-4">No</th>
-                        <th class="py-2.5 px-4">Nama Siswa</th>
-                        <th class="py-2.5 px-4">Email Siswa</th>
-                        <th class="py-2.5 px-4">Kelas</th>
-                        <th class="py-2.5 px-4">Jurusan</th>
-                        <th class="py-2.5 px-4">Jenis Kelamin</th>
-                        <th class="py-2.5 px-4">Orang Tua</th>
-                            <th class="py-2.5 px-4 text-center">Aksi</th>
+    
+<div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+    <div class="overflow-x-auto">
+        {{-- Section Search & Filter --}}
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-1 flex-wrap items-center gap-3">
+                {{-- Search Input --}}
+                <div class="relative min-w-[240px] flex-1 sm:flex-none">
+                    <input 
+                        type="text" 
+                        wire:model.live.debounce.300ms="search" 
+                        placeholder="{{ __('Cari nama, NIS, NISN, email...') }}"
+                        class="w-full rounded-md border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    />
+                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+                    </div>
+                </div>
+
+                {{-- Filter Kelas --}}
+                <select wire:model.live="classroomId"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Kelas') }}</option>
+                    @foreach ($this->classrooms as $classroom)
+                        <option value="{{ $classroom->id }}">{{ $classroom->name }}</option>
+                    @endforeach
+                </select>
+
+                {{-- Filter Jurusan --}}
+                <select wire:model.live="majorId"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Jurusan') }}</option>
+                    @foreach ($this->majors as $major)
+                        <option value="{{ $major->id }}">{{ $major->name }}</option>
+                    @endforeach
+                </select>
+
+                {{-- Filter Jenis Kelamin --}}
+                <select wire:model.live="gender"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Gender') }}</option>
+                    <option value="L">{{ __('Laki-laki') }}</option>
+                    <option value="P">{{ __('Perempuan') }}</option>
+                </select>
+
+                {{-- Filter Status Akun --}}
+                <select wire:model.live="status"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Status') }}</option>
+                    <option value="active">{{ __('Aktif') }}</option>
+                    <option value="inactive">{{ __('Nonaktif') }}</option>
+                </select>
+
+                @if ($search !== '' || $classroomId !== '' || $majorId !== '' || $gender !== '' || $status !== '')
+                    <button type="button" wire:click="resetFilters" class="text-xs font-medium text-red-600 hover:underline">
+                        {{ __('Reset Filter') }}
+                    </button>
+                @endif
+            </div>
+        </div>
+        <table class="min-w-full border-collapse text-sm">
+            <thead>
+                <tr class="border-b border-gray-100 text-left text-gray-500">
+                    <th class="px-4 py-3 font-medium">No</th>
+                    <th class="px-4 py-3 font-medium">Foto</th>
+                    <th class="px-4 py-3 font-medium">Nama Siswa</th>
+                    <th class="px-4 py-3 font-medium">Email Siswa</th>
+                    <th class="px-4 py-3 font-medium">Kelas</th>
+                    <th class="px-4 py-3 font-medium">Jurusan</th>
+                    <th class="px-4 py-3 font-medium">Jenis Kelamin</th>
+                    <th class="px-4 py-3 font-medium">Orang Tua</th>
+                    <th class="px-4 py-3 text-right font-medium">Aksi</th>
+                    <th class="px-4 py-3 text-right font-medium">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 text-gray-700">
+                @forelse ($this->students as $key => $student)
+                    <tr wire:key="{{ $student->id }}" class="hover:bg-gray-50">
+                        <td class="px-4 py-3">{{ $key + $this->students->firstItem() }}</td>
+                        <td class="px-4 py-3">
+                            <img class="h-10 w-10 rounded-full border border-gray-200 object-cover shadow-sm sm:h-12 sm:w-12"
+                                src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $student->name }}" />
+                        </td>
+                        <td class="px-4 py-3 font-medium text-gray-900">{{ $student->name }}</td>
+                        <td class="px-4 py-3">{{ $student->user?->email ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $student->classroom?->name ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $student->major?->name ?? '—' }}</td>
+                        <td class="px-4 py-3">
+                            {{ $student->gender === 'L' ? __('Laki-laki') : ($student->gender === 'P' ? __('Perempuan') : '—') }}
+                        </td>
+                        <td class="px-4 py-3">
+                            @forelse ($student->parents as $parent)
+                                <p class="whitespace-nowrap">{{ $parent->name }} <span class="text-xs text-gray-400">({{ $parent->pivot->relationship ?? '—' }})</span></p>
+                            @empty
+                                —
+                            @endforelse
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center justify-end gap-3">
+                                <a href="{{ route('master-data.students.show', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Lihat') }}">
+                                    <ion-icon name="eye-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Ubah') }}">
+                                    <ion-icon name="create-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <x-ui.delete-button :wire-id="$student->id" :text="__('Akun login terkait juga akan dihapus dan tidak dapat dikembalikan.')" />
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <x-ui.status-toggle :user="$student->user" />
+                        </td>
                     </tr>
-                </thead>
-                <tbody class="rounded-2xl bg-white text-gray-700">
-                     @forelse ($this->students as $key => $student)
-                        <tr wire:key="{{ $student->id }}">
-                            <td class="py-2.5 px-4">
+                @empty
+                    <tr>
+                        <td colspan="10" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data siswa.') }}</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 
-                                {{ $key + $this->students->firstItem() }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                                <div class="flex flex-col items-left gap-6 px-2">
-                                    <img class="w-16 object-fill rounded-2xl" src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $student->name }}" />
-                                    <p class="max-w-xs">{{ $student->name }}</p>
-                                </div>
-                            </td>
-                            <td class="py-2.5 px-4 text-left">
-                              <p class="max-w-xs">{{ $student->user->email ?? '-' }}</p>
-                            </td>
-                            <td class="py-2.5 px-4">
-                                {{ $student->classroom?->name ?? '—' }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                                {{ $student->major?->name ?? '-' }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                              {{ $student->gender === 'L' ? __('Laki-laki') : ($student->gender === 'P' ? __('Perempuan') : '—') }}
-                            </td>
-                            <td class="py-2.5 px-4">
-                                @forelse ($student->parents as $parent)
-                                    <p class="max-w-xs whitespace-nowrap">{{ $parent->name }} <span class="text-xs text-gray-400">({{ $parent->pivot->relationship ?? '—' }})</span></p>
-                                @empty
-                                    —
-                                @endforelse
-                            </td>
-
-                                <td class="py-2.5 px-4">
-                                    <div class="flex flex-col items-center gap-y-2">
-                                    <div class="flex flex-row items-center gap-x-4">
-                                          <a href="#" title="Lihat" target="_blank"  title="Lihat"><ion-icon name="eye-outline" class="text-2xl text-primary"></ion-icon></a>
-                                        {{-- <a href="{{ route('umkm.detail', [$mentor->hasCollaborator->slug, 'type' => 'mentors']) }}" title="Lihat" target="_blank"  title="Lihat"><ion-icon name="eye-outline" class="text-2xl text-primary"></ion-icon></a> --}}
-                                        <a href="#" class="text-primary" title="Ubah">
-                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M8 3H3C1.89543 3 1 3.89543 1 5V16C1 17.1046 1.89543 18 3 18H14C15.1046 18 16 17.1046 16 16V11M14.5858 1.58579C15.3668 0.804738 16.6332 0.804738 17.4142 1.58579C18.1953 2.36683 18.1953 3.63316 17.4142 4.41421L8.82842 13H6L6 10.1716L14.5858 1.58579Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                        </a>
-                                        <form method="POST" class="m-0 flex items-center form-delete-mentor" action="#">
-                                            <button type="submit" class="text-primary" title="Hapus">
-                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <path d="M16 5L15.1327 17.1425C15.0579 18.1891 14.187 19 13.1378 19H4.86224C3.81296 19 2.94208 18.1891 2.86732 17.1425L2 5M7 9V15M11 9V15M12 5V2C12 1.44772 11.5523 1 11 1H7C6.44772 1 6 1.44772 6 2V5M1 5H17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                </svg>
-                                            </button>
-                                        </form>
-                                    </div>
-                                    </div>
-                                </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8" class="p-5 text-center">Belum ada data Mentor yang dapat ditampilkan</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-           </div>
-     </div>
+    <div class="mt-4">{{ $this->students->links() }}</div>
+</div>
 
     @if ($showImportModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-on:keydown.escape.window="$wire.closeImportModal()">

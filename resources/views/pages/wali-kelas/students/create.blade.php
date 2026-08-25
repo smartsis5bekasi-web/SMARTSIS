@@ -56,10 +56,18 @@ new #[Title('Tambah Siswa')] class extends Component {
             'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
             'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],
             'gender' => ['nullable', Rule::in(['L', 'P'])],
-            'birth_date' => ['nullable', 'date'],
+            'birth_date' => ['required','date',"after_or_equal:{$minDate}","before_or_equal:{$maxDate}"],
             'address' => ['nullable', 'string', 'max:255'],
             'classroom_id' => ['required', Rule::in($this->classroomOptions->pluck('id')->all())],
             'avatar' => ['nullable', 'image', 'max:2048'],
+        ];
+    }
+
+     protected function messages(): array
+    {
+        return [
+            'birth_date.before_or_equal' => __('Umur siswa minimal harus 14 tahun.'),
+            'birth_date.after_or_equal' => __('Umur siswa maksimal 20 tahun.'),
         ];
     }
 
@@ -160,13 +168,16 @@ new #[Title('Tambah Siswa')] class extends Component {
                 @enderror
             </div>
 
-            <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Tanggal Lahir') }}</label>
-                <input type="date" wire:model="birth_date"
-                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                @error('birth_date')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
+          <div class="flex flex-col">
+            <label class="mb-1 font-semibold text-gray-600">{{ __('Tanggal Lahir') }} <span class="text-red-500">*</span></label>
+            <input type="date" 
+                wire:model="birth_date"
+                min="{{ now()->subYears(20)->format('Y-m-d') }}"
+                max="{{ now()->subYears(14)->format('Y-m-d') }}"
+                class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+            @error('birth_date')
+                <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+            @enderror
             </div>
 
             <div class="flex flex-col">
