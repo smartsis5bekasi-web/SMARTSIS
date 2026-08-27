@@ -7,7 +7,13 @@
 
         <x-passkey-verify />
 
-        <form method="POST" action="{{ route('login.store') }}" class="flex flex-col gap-6">
+        <form
+            method="POST"
+            action="{{ route('login.store') }}"
+            class="flex flex-col gap-6"
+            x-data="{ submitting: false }"
+            x-on:submit="submitting = true"
+        >
             @csrf
 
             <!-- Email Address -->
@@ -45,8 +51,21 @@
             <flux:checkbox name="remember" :label="__('Remember me')" :checked="old('remember')" />
 
             <div class="flex items-center justify-end">
-                <flux:button variant="primary" type="submit" class="w-full" data-test="login-button">
-                    {{ __('Log in') }}
+                <flux:button
+                    variant="primary"
+                    type="submit"
+                    class="w-full"
+                    data-test="login-button"
+                    x-bind:disabled="submitting"
+                >
+                    <span x-show="!submitting">{{ __('Log in') }}</span>
+                    <span x-show="submitting" x-cloak class="flex items-center justify-center gap-2">
+                        <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v3.5A4.5 4.5 0 007.5 12H4z"></path>
+                        </svg>
+                        {{ __('Logging in...') }}
+                    </span>
                 </flux:button>
             </div>
         </form>

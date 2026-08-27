@@ -22,6 +22,7 @@ new #[Title('Rekap Absensi')] class extends Component {
     public string $search = '';
 
     public ?int $classroomId = null;
+    
 
     public function mount(): void
     {
