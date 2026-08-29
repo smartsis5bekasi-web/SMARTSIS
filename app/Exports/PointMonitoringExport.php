@@ -16,19 +16,21 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Cell\StringValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
+/**
+ * @implements WithMapping<Student>
+ */
 class PointMonitoringExport extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {
     use StylesSheet;
 
     /**
-     * @param Builder<Student> $baseQuery
+     * @param  Builder<Student>  $baseQuery
      */
     public function __construct(
         private readonly Builder $baseQuery,
         private readonly string $search = '',
         private readonly string $classroomId = '',
         private readonly string $status = '',
-        private readonly ?PointSetting $setting = null,
     ) {}
 
     public function title(): string
@@ -45,8 +47,8 @@ class PointMonitoringExport extends StringValueBinder implements FromCollection,
             ->with(['classroom'])
             ->when($this->search !== '', function (Builder $query) {
                 $query->where(function (Builder $q) {
-                    $q->where('name', 'like', '%' . $this->search . '%')
-                      ->orWhere('nis', 'like', '%' . $this->search . '%');
+                    $q->where('name', 'like', '%'.$this->search.'%')
+                        ->orWhere('nis', 'like', '%'.$this->search.'%');
                 });
             })
             ->when($this->classroomId !== '', fn (Builder $query) => $query->where('classroom_id', $this->classroomId))
@@ -78,13 +80,13 @@ class PointMonitoringExport extends StringValueBinder implements FromCollection,
     }
 
     /**
-     * @param Student $row
+     * @param  Student  $row
      * @return array<int, mixed>
      */
     public function map($row): array
     {
         $points = $row->current_point ?? 100;
-        
+
         $statusText = 'Aman';
         if ($points <= 50) {
             $statusText = 'Di Bawah Minimum';

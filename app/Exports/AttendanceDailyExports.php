@@ -19,6 +19,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 /**
  * Daily attendance monitor rows for a single date, scoped by the same
  * filters (classroom, status, search) as the Absensi index page.
+ *
+ * @implements WithMapping<Student>
  */
 class AttendanceDailyExports extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {

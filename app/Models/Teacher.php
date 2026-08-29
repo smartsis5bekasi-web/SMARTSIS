@@ -20,7 +20,7 @@ class Teacher extends Model
     /** @use HasFactory<TeacherFactory> */
     use HasFactory;
 
-    protected $fillable = ['user_id', 'name','avatar_url', 'nip', 'phone'];
+    protected $fillable = ['user_id', 'name', 'avatar_url', 'nip', 'phone'];
 
     /**
      * @return BelongsTo<User, $this>

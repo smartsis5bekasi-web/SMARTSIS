@@ -16,6 +16,9 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Cell\StringValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
+/**
+ * @implements WithMapping<Violation>
+ */
 class ViolationExport extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {
     use StylesSheet;
@@ -73,8 +76,8 @@ class ViolationExport extends StringValueBinder implements FromCollection, Shoul
             $row->student?->nis,
             $row->student?->classroom?->name,
             $row->pointRule?->name,
-            '-' . ($row->pointRule?->point ?? 0),
-            $row->status?->label(),
+            '-'.($row->pointRule->point ?? 0),
+            $row->status->label(),
             $row->occurred_on?->format('d-m-Y'),
             $row->note,
         ];

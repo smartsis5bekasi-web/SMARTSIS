@@ -126,12 +126,13 @@ class Student extends Model
     /**
      * The parents/guardians linked to this student.
      *
-     * @return BelongsToMany<ParentGuardian, $this>
+     * @return BelongsToMany<ParentGuardian, $this, ParentStudent>
      */
     public function parents(): BelongsToMany
     {
         return $this->belongsToMany(ParentGuardian::class, 'parent_student', 'student_id', 'parent_id')
             ->withPivot('relationship')
+            ->using(ParentStudent::class)
             ->withTimestamps();
     }
 

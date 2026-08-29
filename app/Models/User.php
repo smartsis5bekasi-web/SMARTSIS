@@ -147,7 +147,7 @@ class User extends Authenticatable implements PasskeyUser
      */
     public function avatarUrl(): ?string
     {
-        return $this->avatarOwner()?->avatar_url ?? $this->avatar_url;
+        return $this->avatarOwner()->avatar_url ?? $this->avatar_url;
     }
 
     /**

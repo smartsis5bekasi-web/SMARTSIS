@@ -23,13 +23,86 @@ test('the list offers an edit action for a pending achievement', function () {
         ->assertSee(route('academic.achievements.edit', $achievement), escape: false);
 });
 
-test('the list hides the edit action once the achievement is verified', function () {
+test('the list still offers the edit action to staff once the achievement is verified', function () {
     $achievement = Achievement::factory()->approved()->create();
 
     $this->actingAs(userWithRole(UserRole::GuruBk));
 
     Livewire::test('pages::academic.achievement.index')
-        ->assertDontSee(route('academic.achievements.edit', $achievement), escape: false);
+        ->assertSee(route('academic.achievements.edit', $achievement), escape: false);
+});
+
+test('a student may not edit their own achievement once it is verified', function () {
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->onboarded()->create(['user_id' => $user->id]);
+    $achievement = Achievement::factory()->approved()->create(['student_id' => $student->id]);
+
+    $this->actingAs($user)
+        ->get(route('academic.achievements.edit', $achievement))
+        ->assertForbidden();
+});
+
+test('the edit form is prefilled from a verified achievement too', function () {
+    $rule = PointRule::factory()->addition()->create();
+    $achievement = Achievement::factory()->approved()->create([
+        'point_rule_id' => $rule->id,
+        'title' => 'Juara 1 LKS',
+        'level' => 'Provinsi',
+    ]);
+
+    $this->actingAs(userWithRole(UserRole::GuruBk));
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement])
+        ->assertSet('point_rule_id', $rule->id)
+        ->assertSet('title', 'Juara 1 LKS')
+        ->assertSet('level', 'Provinsi');
+});
+
+test('changing the rule on a verified achievement re-syncs the student points', function () {
+    $verifier = userWithRole(UserRole::GuruBk);
+    $student = Student::factory()->onboarded()->create(['current_point' => 100]);
+    $oldRule = PointRule::factory()->addition()->create(['point' => 10]);
+    $newRule = PointRule::factory()->addition()->create(['point' => 25]);
+
+    $achievement = Achievement::factory()->create([
+        'student_id' => $student->id,
+        'point_rule_id' => $oldRule->id,
+    ]);
+    $achievement->approve($verifier);
+
+    expect($student->fresh()->current_point)->toBe(110);
+
+    $this->actingAs($verifier);
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement])
+        ->set('point_rule_id', $newRule->id)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->fresh()->current_point)->toBe(125)
+        ->and($achievement->fresh()->pointLogs()->count())->toBe(3);
+});
+
+test('editing a verified achievement without touching the rule leaves the points alone', function () {
+    $verifier = userWithRole(UserRole::GuruBk);
+    $student = Student::factory()->onboarded()->create(['current_point' => 0]);
+    $rule = PointRule::factory()->addition()->create(['point' => 15]);
+
+    $achievement = Achievement::factory()->create([
+        'student_id' => $student->id,
+        'point_rule_id' => $rule->id,
+    ]);
+    $achievement->approve($verifier);
+
+    $this->actingAs($verifier);
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement])
+        ->set('title', 'Judul Dikoreksi')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->fresh()->current_point)->toBe(15)
+        ->and($achievement->fresh()->pointLogs()->count())->toBe(1);
 });
 
 test('the list hides the edit action from a view-only role', function () {

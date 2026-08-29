@@ -19,6 +19,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  * All siswa rows using the same columns as the import template, so an
  * export can be edited and re-imported. Only the first orang tua/wali is
  * exported because the template holds one per row.
+ *
+ * @implements WithMapping<Student>
  */
 class StudentsExport extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {
@@ -63,7 +65,7 @@ class StudentsExport extends StringValueBinder implements FromCollection, Should
             $row->classroom?->name,
             $row->major?->name,
             $parent?->name,
-            $parent?->pivot->relationship,
+            $parent?->pivot?->relationship,
             $parent?->phone,
         ];
     }

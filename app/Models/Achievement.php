@@ -58,18 +58,16 @@ class Achievement extends Model
     /**
      * Whether the user may edit the record.
      *
-     * Only pending records qualify: approving one writes a point log, so a
-     * later change to its rule would leave the ledger out of sync. A student
-     * is always confined to their own submission, whichever grant they hold.
+     * A student may only correct their own submission while it is still
+     * pending; once verified it is out of their hands. Staff holding an edit
+     * grant may also fix a verified record — {@see resyncApprovedPoints()}
+     * keeps the ledger aligned when the correction changes the rule.
      */
     public function isEditableBy(User $user): bool
     {
-        if (! $this->isPending()) {
-            return false;
-        }
-
         if ($user->primaryRole() === UserRole::Siswa) {
-            return $user->student?->id === $this->student_id
+            return $this->isPending()
+                && $user->student?->id === $this->student_id
                 && $user->canAny([
                     Permission::RequestAchievement->value,
                     Permission::EditAchievement->value,
@@ -80,6 +78,34 @@ class Achievement extends Model
             Permission::EditAchievement->value,
             Permission::ManageAchievement->value,
         ]);
+    }
+
+    /**
+     * Re-apply the granted points after an approved record's rule was
+     * corrected: reverse what the old rule awarded, then award the new one so
+     * the balance and the audit trail both reflect the correction.
+     */
+    public function resyncApprovedPoints(?User $by = null): void
+    {
+        if ($this->status !== PointApprovalStatus::Approved) {
+            return;
+        }
+
+        $this->reversePoints($by);
+
+        $this->loadMissing(['student', 'pointRule']);
+
+        if ($this->student === null || $this->pointRule === null) {
+            return;
+        }
+
+        app(ApplyPointAdjustment::class)->handle(
+            student: $this->student,
+            rule: $this->pointRule,
+            source: $this,
+            note: $this->note,
+            by: $by,
+        );
     }
 
     /**

@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * @property int|null $user_id
  * @property string $name
  * @property string|null $phone
+ * @property-read ParentStudent|null $pivot Set only when hydrated through Student::parents().
  */
 class ParentGuardian extends Model
 {
@@ -39,12 +40,13 @@ class ParentGuardian extends Model
     /**
      * The children (students) linked to this parent.
      *
-     * @return BelongsToMany<Student, $this>
+     * @return BelongsToMany<Student, $this, ParentStudent>
      */
     public function students(): BelongsToMany
     {
         return $this->belongsToMany(Student::class, 'parent_student', 'parent_id', 'student_id')
             ->withPivot('relationship')
+            ->using(ParentStudent::class)
             ->withTimestamps();
     }
 }

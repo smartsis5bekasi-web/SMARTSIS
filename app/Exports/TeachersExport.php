@@ -18,6 +18,8 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 /**
  * All guru rows using the same columns as the import template, so an export
  * can be edited and re-imported.
+ *
+ * @implements WithMapping<Teacher>
  */
 class TeachersExport extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {

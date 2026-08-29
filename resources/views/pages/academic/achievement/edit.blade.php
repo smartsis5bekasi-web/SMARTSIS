@@ -88,7 +88,15 @@ new #[Title('Edit Prestasi')] class extends Component {
         }
         unset($data['evidence']);
 
+        $ruleChanged = (int) $this->point_rule_id !== (int) $this->achievement->point_rule_id;
+
         $this->achievement->update($data);
+
+        // A verified record already wrote a point log; correcting its rule has
+        // to reverse the old award and grant the new one, or the balance drifts.
+        if ($ruleChanged) {
+            $this->achievement->resyncApprovedPoints(auth()->user());
+        }
 
         toast(__('Prestasi diperbarui.'), 'success');
 
@@ -102,7 +110,8 @@ new #[Title('Edit Prestasi')] class extends Component {
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <x-ui.page-header :title="__('Edit Prestasi')" :subtitle="$achievement->student?->name">
+    <x-ui.page-header :title="__('Edit Prestasi')"
+        :subtitle="$achievement->student?->name . ' · ' . $achievement->status->label()">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('academic.achievements')" wire:navigate>
                 {{ __('Kembali') }}

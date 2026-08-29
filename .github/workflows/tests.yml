@@ -17,12 +17,30 @@ on:
 permissions:
   contents: read
 
+# A new push to the same branch makes the previous run pointless.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Job-level so the step below can test them in `if:` — the `secrets`
+    # context is not available there, but `env` is.
+    env:
+      FLUX_USERNAME: ${{ secrets.FLUX_USERNAME }}
+      FLUX_LICENSE_KEY: ${{ secrets.FLUX_LICENSE_KEY }}
+
     strategy:
+      # Never let one PHP version cancel the others: a red 8.4 job should
+      # still tell us whether 8.3 is healthy.
+      fail-fast: false
       matrix:
-        php-version: ['8.3', '8.4', '8.5']
+        # phpoffice/phpspreadsheet (via maatwebsite/excel) requires php <8.5,
+        # so 8.5 cannot install until that dependency is upgraded.
+        php-version: ['8.3', '8.4']
 
     steps:
       - name: Checkout code
@@ -34,22 +52,42 @@ jobs:
         uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
         with:
           php-version: ${{ matrix.php-version }}
+          # pdo_sqlite/sqlite3 back the in-memory test database; zip/gd/mbstring
+          # are needed by phpspreadsheet and dompdf.
+          extensions: bcmath, gd, intl, mbstring, pdo_sqlite, sqlite3, zip
           tools: composer:v2
-          coverage: xdebug
+          coverage: none
+          ini-values: error_reporting=E_ALL
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: '22'
+          cache: 'npm'
 
-      - name: Install Node Dependencies
-        run: npm i
+      - name: Resolve Composer Cache Directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer Packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ matrix.php-version }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php-version }}-
 
       - name: Add Flux Credentials Loaded From ENV
-        run: composer config http-basic.composer.fluxui.dev "${{ secrets.FLUX_USERNAME }}" "${{ secrets.FLUX_LICENSE_KEY }}"
+        if: env.FLUX_USERNAME != ''
+        run: composer config http-basic.composer.fluxui.dev "$FLUX_USERNAME" "$FLUX_LICENSE_KEY"
 
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Validate Composer Files
+        run: composer validate --no-check-publish
+
+      - name: Install PHP Dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
+
+      - name: Install Node Dependencies
+        run: npm ci
 
       - name: Copy Environment File
         run: cp .env.example .env

@@ -11,3 +11,12 @@ parameters:
         - routes/
 
     level: 7
+
+    # Livewire v4 single-file components live in Blade files, which PHPStan
+    # cannot analyse, so traits consumed only by them look unused.
+    ignoreErrors:
+        -
+            identifier: trait.unused
+            path: app/Livewire/Concerns/*
+
+    reportUnmatchedIgnoredErrors: true

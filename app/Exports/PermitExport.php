@@ -16,6 +16,9 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Cell\StringValueBinder;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
+/**
+ * @implements WithMapping<Permit>
+ */
 class PermitExport extends StringValueBinder implements FromCollection, ShouldAutoSize, WithCustomValueBinder, WithHeadings, WithMapping, WithStyles, WithTitle
 {
     use StylesSheet;
@@ -76,10 +79,10 @@ class PermitExport extends StringValueBinder implements FromCollection, ShouldAu
             $row->student?->name,
             $row->student?->nis,
             $row->student?->classroom?->name,
-            $row->type?->label(),
-            $row->date?->format('d-m-Y'),
+            $row->type->label(),
+            $row->date->format('d-m-Y'),
             $row->reason,
-            $row->status?->label(),
+            $row->status->label(),
             $row->decider?->name,
             $row->decided_at?->format('d-m-Y H:i'),
             $row->decision_note,
