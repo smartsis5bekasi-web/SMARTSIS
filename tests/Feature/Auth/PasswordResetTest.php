@@ -63,3 +63,33 @@ test('password can be reset with valid token', function () {
         return true;
     });
 });
+
+test('reset password email uses the branded smartsis template', function () {
+    Notification::fake();
+
+    $user = User::factory()->create(['name' => 'Budi Santoso']);
+
+    $this->post(route('password.request'), ['email' => $user->email]);
+
+    Notification::assertSentTo($user, ResetPassword::class, function (ResetPassword $notification) use ($user) {
+        $mail = $notification->toMail($user);
+        $rendered = (string) $mail->render();
+
+        expect($mail->subject)->toContain('Atur Ulang Kata Sandi');
+        expect($rendered)
+            ->toContain('Budi Santoso')
+            ->toContain($notification->token)
+            ->toContain('reset-password')
+            ->toContain('60 menit')
+            ->toContain('#441daa');
+
+        return true;
+    });
+});
+
+test('reset password link screen renders a submit button that can show a spinner', function () {
+    $this->get(route('password.request'))
+        ->assertOk()
+        ->assertSee('data-test="email-password-reset-link-button"', false)
+        ->assertSee('animate-spin', false);
+});

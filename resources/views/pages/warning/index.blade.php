@@ -182,7 +182,7 @@ new #[Title('Surat Peringatan')] class extends Component {
                         <th class="py-3 px-4 text-center">{{ __('Aksi') }}</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white text-gray-700">
+                <tbody class="bg-white text-gray-700 whitespace-nowrap">
                     @forelse ($this->letters as $key => $letter)
                         <tr class="border-b last:border-0">
                             <td class="py-3 px-4">{{ $key + $this->letters->firstItem() }}</td>

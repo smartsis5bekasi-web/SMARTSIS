@@ -32,7 +32,12 @@ function permitAttendanceSetting(): AttendanceSetting
     ]);
 
     $setting = AttendanceSetting::current();
-    $setting->update(['late_after' => '07:00:00', 'check_out_after' => '15:00:00', 'late_rule_id' => $late->id]);
+    $setting->update([
+        'check_in_start' => '06:00:00',
+        'late_after' => '07:00:00',
+        'check_out_after' => '15:00:00',
+        'late_rule_id' => $late->id,
+    ]);
 
     return $setting;
 }

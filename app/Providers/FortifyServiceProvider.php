@@ -4,14 +4,16 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
-use App\Models\User;  
+use App\Models\User;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;   
+use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException; 
+use Illuminate\Validation\ValidationException;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -31,6 +33,7 @@ class FortifyServiceProvider extends ServiceProvider
     {
         $this->configureActions();
         $this->configureViews();
+        $this->configurePasswordResetEmail();
         $this->configureRateLimiting();
     }
 
@@ -42,21 +45,20 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
 
+        Fortify::authenticateUsing(function (Request $request) {
+            $user = User::where(Fortify::username(), $request->{Fortify::username()})->first();
 
-    Fortify::authenticateUsing(function (Request $request) {
-        $user = User::where(Fortify::username(), $request->{Fortify::username()})->first();
+            if (! $user || ! Hash::check($request->password, $user->password)) {
+                return null;
+            }
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            return null;   
-        }
+            if (! $user->is_active) {
+                throw ValidationException::withMessages([
+                    Fortify::username() => __('Akun Anda telah dinonaktifkan. Silakan Hubungi admin.'),
+                ]);
+            }
 
-        if (! $user->is_active) {
-            throw ValidationException::withMessages([
-                Fortify::username() => __('Akun Anda telah dinonaktifkan. Silakan Hubungi admin.'),
-            ]);
-        }
-
-        return $user;
+            return $user;
         });
     }
 
@@ -71,6 +73,33 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::confirmPasswordView(fn () => view('pages::auth.confirm-password'));
         Fortify::resetPasswordView(fn () => view('pages::auth.reset-password'));
         Fortify::requestPasswordResetLinkView(fn () => view('pages::auth.forgot-password'));
+    }
+
+    /**
+     * Send the password reset link using the branded SMARTSIS email template
+     * instead of Laravel's stock notification markup.
+     */
+    private function configurePasswordResetEmail(): void
+    {
+        ResetPassword::toMailUsing(function (User $user, string $token): MailMessage {
+            $resetUrl = route('password.reset', [
+                'token' => $token,
+                'email' => $user->getEmailForPasswordReset(),
+            ]);
+
+            $expiresInMinutes = (int) config(
+                'auth.passwords.'.config('auth.defaults.passwords').'.expire',
+                60
+            );
+
+            return (new MailMessage)
+                ->subject(__('Atur Ulang Kata Sandi :app', ['app' => config('app.name', 'SMARTSIS')]))
+                ->view('emails.auth.reset-password', [
+                    'user' => $user,
+                    'resetUrl' => $resetUrl,
+                    'expiresInMinutes' => $expiresInMinutes,
+                ]);
+        });
     }
 
     /**

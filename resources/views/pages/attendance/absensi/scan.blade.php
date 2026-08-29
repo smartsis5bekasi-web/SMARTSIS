@@ -42,26 +42,6 @@ new #[Title('Scan Absensi')] class extends Component {
         return AttendanceSetting::current();
     }
 
-    /**
-     * Every registered face template, handed to the browser matcher (1:N)
-     * for the shared kiosk staffed by a Guru Piket / Super Admin.
-     *
-     * @return array<int, array{id: int, name: string, descriptors: array<int, array<int, float>>}>
-     */
-    #[Computed]
-    public function faceStudents(): array
-    {
-        return Student::query()
-            ->whereNotNull('face_descriptors')
-            ->get(['id', 'name', 'face_descriptors'])
-            ->map(fn (Student $student): array => [
-                'id' => $student->id,
-                'name' => $student->name,
-                'descriptors' => $student->face_descriptors,
-            ])
-            ->all();
-    }
-
     public function setMode(string $mode): void
     {
         abort_unless(in_array($mode, ['masuk', 'pulang'], true), 400);
@@ -147,7 +127,7 @@ new #[Title('Scan Absensi')] class extends Component {
             </div>
 
             <div wire:ignore x-data
-                x-init="window.SmartsisAttendance.start($el, $wire, { students: {{ Js::from($this->faceStudents) }} })"
+                x-init="window.SmartsisAttendance.start($el, $wire, { templatesUrl: @js(route('attendance.absensi.face-templates')) })"
                 class="flex flex-col">
                 <div class="relative overflow-hidden rounded-2xl border-2 border-dashed border-primary-400 bg-gray-900">
                     <video data-face-video playsinline muted autoplay class="aspect-[4/3] w-full -scale-x-100 object-cover"></video>
@@ -196,6 +176,10 @@ new #[Title('Scan Absensi')] class extends Component {
             <div class="rounded-xl bg-white p-6 drop-shadow-lg">
                 <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Jadwal Absensi') }}</p>
                 <dl class="mt-4 flex flex-col gap-3 text-sm">
+                    <div class="flex items-center justify-between">
+                        <dt class="text-gray-500">{{ __('Absensi masuk mulai') }}</dt>
+                        <dd class="font-semibold text-gray-800">{{ substr($this->setting->check_in_start, 0, 5) }}</dd>
+                    </div>
                     <div class="flex items-center justify-between">
                         <dt class="text-gray-500">{{ __('Terlambat setelah') }}</dt>
                         <dd class="font-semibold text-gray-800">{{ substr($this->setting->late_after, 0, 5) }}</dd>

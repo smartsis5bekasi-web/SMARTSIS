@@ -212,7 +212,7 @@ new #[Title('Monitoring Poin')] class extends Component {
                         <th class="py-3 px-4 text-center">{{ __('Aksi') }}</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white text-gray-700">
+                <tbody class="bg-white text-gray-700 whitespace-nowrap">
                     @forelse ($this->students as $key => $student)
                         @php($belowMin = $student->current_point < $this->setting->min_point)
                         <tr class="border-b last:border-0">

@@ -234,7 +234,7 @@
                             <th class="py-3 px-4 text-center">{{ __('Aksi') }}</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white text-gray-700">
+                    <tbody class="bg-white text-gray-700 whitespace-nowrap">
                         @forelse ($this->permits as $key => $permit)
                             <tr class="border-b last:border-0">
                                 <td class="py-3 px-4">{{ $key + $this->permits->firstItem() }}</td>

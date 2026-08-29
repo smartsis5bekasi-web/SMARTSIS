@@ -140,28 +140,6 @@
         }
 
         /**
-         * The signed-in siswa's own face template(s) handed to the browser
-         * matcher (1:1) — other students' templates never reach a siswa's
-         * browser.
-         *
-         * @return array<int, array{id: int, name: string, descriptors: array<int, array<int, float>>}>
-         */
-        #[Computed]
-        public function faceStudents(): array
-        {
-            return Student::query()
-                ->whereNotNull('face_descriptors')
-                ->whereKey(auth()->user()->student?->id ?? 0)
-                ->get(['id', 'name', 'face_descriptors'])
-                ->map(fn (Student $student): array => [
-                    'id' => $student->id,
-                    'name' => $student->name,
-                    'descriptors' => $student->face_descriptors,
-                ])
-                ->all();
-        }
-
-        /**
          * Record the signed-in siswa's attendance after the blink challenge.
          * The step is decided server-side from today's record (check-in first,
          * then check-out) and the student id is pinned to the signed-in siswa,
@@ -466,7 +444,7 @@
 
                         @if ($this->isScannerOpen())
                             <div wire:ignore x-data
-                                x-init="window.SmartsisAttendance.start($el, $wire, { students: {{ Js::from($this->faceStudents) }} })"
+                                x-init="window.SmartsisAttendance.start($el, $wire, { templatesUrl: @js(route('attendance.absensi.face-templates')) })"
                                 class="flex flex-col">
                                 <div class="relative overflow-hidden rounded-2xl border-2 border-dashed border-primary-400 bg-gray-900">
                                     <video data-face-video playsinline muted autoplay class="aspect-[4/3] w-full -scale-x-100 object-cover"></video>
@@ -534,6 +512,10 @@
                             <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Jadwal Absensi') }}</p>
                             <dl class="mt-4 flex flex-col gap-3 text-sm">
                                 <div class="flex items-center justify-between">
+                                    <dt class="text-gray-500">{{ __('Absensi masuk mulai') }}</dt>
+                                    <dd class="font-semibold text-gray-800">{{ substr($this->setting->check_in_start, 0, 5) }}</dd>
+                                </div>
+                                <div class="flex items-center justify-between">
                                     <dt class="text-gray-500">{{ __('Terlambat setelah') }}</dt>
                                     <dd class="font-semibold text-gray-800">{{ substr($this->setting->late_after, 0, 5) }}</dd>
                                 </div>
@@ -576,7 +558,7 @@
                                 <th class="py-3 px-4">{{ __('Keterangan') }}</th>
                             </tr>
                         </thead>
-                        <tbody class="bg-white text-gray-700">
+                        <tbody class="bg-white text-gray-700 whitespace-nowrap">
                             @forelse ($this->history as $attendance)
                                 <tr class="border-b last:border-0">
                                     <td class="py-3 px-4">{{ $attendance->date->translatedFormat('d M Y') }}</td>
@@ -666,7 +648,7 @@
                                 @endif
                             </tr>
                         </thead>
-                        <tbody class="bg-white text-gray-700">
+                        <tbody class="bg-white text-gray-700 whitespace-nowrap">
                             @forelse ($this->students as $key => $student)
                                 @php($attendance = $student->attendances->first())
                                 <tr class="border-b last:border-0">

@@ -164,7 +164,7 @@ new #[Title('Rekap Absensi')] class extends Component {
                         <th class="py-3 px-4 text-center">{{ __('Kehadiran') }}</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white text-gray-700">
+                <tbody class="bg-white text-gray-700 whitespace-nowrap">
                     @forelse ($this->recap as $key => $student)
                         @php($rate = $this->presenceRate($student))
                         <tr class="border-b last:border-0">

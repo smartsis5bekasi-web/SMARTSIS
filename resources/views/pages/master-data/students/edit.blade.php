@@ -53,6 +53,8 @@ new #[Title('Edit Siswa')] class extends Component {
 
     public function mount(Student $student): void
     {
+        $student->loadMissing('user');
+
         $this->student = $student;
         $this->parents = $student->parents
             ->map(fn (ParentGuardian $parent): array => [
@@ -94,7 +96,13 @@ new #[Title('Edit Siswa')] class extends Component {
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
             'teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
             'avatar' => ['nullable', 'image', 'max:2048'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->student->user_id)],
+            // Imported students have no login account yet, so there is nothing to
+            // write the email to — only demand it when an account exists.
+            'email' => [
+                $this->student->user ? 'required' : 'nullable',
+                'email', 'max:255',
+                Rule::unique('users', 'email')->ignore($this->student->user_id),
+            ],
             'parents' => ['array'],
             'parents.*.id' => ['nullable', Rule::exists('parents', 'id')],
             'parents.*.name' => ['required', 'string', 'max:100'],
@@ -297,13 +305,21 @@ new #[Title('Edit Siswa')] class extends Component {
             </div>
 
             <div class="flex flex-col">
-    <label class="mb-1 font-semibold text-gray-600">{{ __('Email') }} <span class="text-red-500">*</span></label>
-    <input type="email" wire:model="email" placeholder="siswa@email.com"
-        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-    @error('email')
-        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-    @enderror
-</div>
+                <label class="mb-1 font-semibold text-gray-600">
+                    {{ __('Email') }}
+                    @if ($student->user)
+                        <span class="text-red-500">*</span>
+                    @endif
+                </label>
+                <input type="email" wire:model="email" placeholder="siswa@email.com"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                @unless ($student->user)
+                    <span class="mt-1 text-sm text-gray-500">{{ __('Siswa ini belum punya akun login, sehingga email belum dipakai.') }}</span>
+                @endunless
+                @error('email')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
 
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Jenis Kelamin') }}</label>

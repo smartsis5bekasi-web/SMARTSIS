@@ -28,6 +28,11 @@ class AttendanceException extends RuntimeException
         return new self(__('Absensi pulang hari ini sudah tercatat.'));
     }
 
+    public static function checkInNotOpen(string $opensAt): self
+    {
+        return new self(__('Absensi masuk baru dibuka pukul :time.', ['time' => $opensAt]));
+    }
+
     public static function checkOutNotOpen(string $opensAt): self
     {
         return new self(__('Absensi pulang baru dibuka pukul :time.', ['time' => $opensAt]));

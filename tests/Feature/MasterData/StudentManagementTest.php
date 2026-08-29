@@ -15,10 +15,26 @@ beforeEach(function () {
     $this->actingAs(adminUser());
 });
 
+/**
+ * Fields the create form requires on every submission, on top of whatever the
+ * test under it is actually asserting.
+ *
+ * @return array<string, string>
+ */
+function requiredStudentInput(): array
+{
+    return [
+        'email' => fake()->unique()->safeEmail(),
+        'password' => 'rahasia123',
+        'birth_date' => now()->subYears(16)->format('Y-m-d'),
+    ];
+}
+
 test('creating a student stores the record', function () {
     $classroom = Classroom::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
         ->set('classroom_id', $classroom->id)
@@ -48,6 +64,7 @@ test('nis must be unique', function () {
     Student::factory()->create(['nis' => '0012345678']);
 
     Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
         ->set('classroom_id', $classroom->id)
@@ -60,6 +77,7 @@ test('uploading an avatar stores it and persists the public url', function () {
     $classroom = Classroom::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
         ->set('classroom_id', $classroom->id)
@@ -117,6 +135,7 @@ test('creating a student with parents links them with the relationship', functio
     $classroom = Classroom::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
         ->set('classroom_id', $classroom->id)
@@ -143,6 +162,7 @@ test('a parent row requires a name', function () {
     $classroom = Classroom::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
         ->set('classroom_id', $classroom->id)

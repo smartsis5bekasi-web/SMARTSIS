@@ -7,7 +7,9 @@
 //
 // The staffed kiosk (pages::attendance.absensi.scan) and the siswa's own
 // Absensi page (pages::attendance.absensi.index) call
-// window.SmartsisAttendance.start($el, $wire, { students }) from Alpine x-init.
+// window.SmartsisAttendance.start($el, $wire, { templatesUrl }) from Alpine
+// x-init; the endpoint decides which templates that user is allowed to match
+// against (everyone for the kiosk, themselves for a siswa).
 
 import * as faceapi from '@vladmandic/face-api';
 
@@ -40,14 +42,63 @@ let mediaStream = null;
 let loopId = null;
 let stopped = false;
 
-function loadModels() {
-    modelsReady ??= Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-    ]);
+/**
+ * Load the three nets, reporting each one as it lands.
+ *
+ * They total ~6.8 MB, almost all of it faceRecognitionNet, so this is the slow
+ * part of starting a scanner. It is kicked off alongside getUserMedia rather
+ * than before it — see start() — and memoised so a second visit in the same
+ * page session is instant.
+ *
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+function loadModels(onProgress) {
+    if (modelsReady) {
+        return modelsReady;
+    }
+
+    const nets = [
+        faceapi.nets.tinyFaceDetector,
+        faceapi.nets.faceLandmark68Net,
+        faceapi.nets.faceRecognitionNet,
+    ];
+
+    let done = 0;
+
+    modelsReady = Promise.all(
+        nets.map((net) =>
+            net.loadFromUri(MODEL_URL).then(() => {
+                done++;
+                onProgress?.(done, nets.length);
+            }),
+        ),
+    ).catch((error) => {
+        // Let the next attempt retry instead of caching the failure forever.
+        modelsReady = null;
+
+        throw error;
+    });
 
     return modelsReady;
+}
+
+/**
+ * The registered face templates, fetched once from the cached endpoint.
+ *
+ * @param {string} url
+ * @returns {Promise<Array<{ id: number, name: string, descriptors: number[][] }>>}
+ */
+async function fetchTemplates(url) {
+    const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin',
+    });
+
+    if (!response.ok) {
+        throw new Error(`Face templates request failed (${response.status})`);
+    }
+
+    return response.json();
 }
 
 function stopKiosk() {
@@ -89,7 +140,7 @@ window.SmartsisAttendance = {
      *
      * @param {HTMLElement} container
      * @param {{ record: (studentId: number) => Promise<void> }} wire  Livewire $wire proxy.
-     * @param {{ students: Array<{ id: number, name: string, descriptors: number[][] }> }} options
+     * @param {{ templatesUrl: string }} options
      */
     async start(container, wire, options) {
         const video = container.querySelector('[data-face-video]');
@@ -103,35 +154,26 @@ window.SmartsisAttendance = {
             statusEl.classList.toggle('text-gray-500', tone === 'info');
         };
 
-        const students = options.students ?? [];
-
-        if (students.length === 0) {
-            setStatus('Belum ada siswa dengan wajah terdaftar. Daftarkan wajah melalui aktivasi akun siswa.', 'error');
-
-            return;
-        }
-
         // This session's own camera stream, so the DOM-removal guard in tick()
         // never stops a newer session's stream by accident.
         let stream = null;
 
-        const matcher = new faceapi.FaceMatcher(
-            students.map(
-                (student) =>
-                    new faceapi.LabeledFaceDescriptors(
-                        String(student.id),
-                        student.descriptors.map((sample) => new Float32Array(sample)),
-                    ),
-            ),
-            MATCH_THRESHOLD,
-        );
+        // Kick the two slow downloads off first, but do not wait on them: the
+        // camera preview is what the user is waiting to see, and it is ready in
+        // a fraction of the ~6.8 MB the models take.
+        const modelsPromise = loadModels((done, total) => {
+            if (stream !== null) {
+                setStatus(`Memuat model pengenalan wajah… (${done}/${total})`);
+            }
+        });
+        const templatesPromise = fetchTemplates(options.templatesUrl);
 
-        const names = new Map(students.map((student) => [String(student.id), student.name]));
+        // Nothing below should surface as an unhandled rejection while the
+        // camera prompt is still open.
+        modelsPromise.catch(() => {});
+        templatesPromise.catch(() => {});
 
         try {
-            setStatus('Memuat model pengenalan wajah…');
-            await loadModels();
-
             setStatus('Menyalakan kamera…');
             stopped = false;
             stream = await navigator.mediaDevices.getUserMedia({
@@ -152,6 +194,42 @@ window.SmartsisAttendance = {
 
             return;
         }
+
+        // Preview is live; now wait for what the matcher needs.
+        let students = [];
+
+        try {
+            setStatus('Memuat model pengenalan wajah…');
+            [, students] = await Promise.all([modelsPromise, templatesPromise]);
+        } catch (error) {
+            console.error('[SmartsisAttendance]', error);
+            setStatus('Gagal memuat data pengenalan wajah. Muat ulang halaman untuk mencoba lagi.', 'error');
+
+            return;
+        }
+
+        if (stopped || !container.isConnected) {
+            return;
+        }
+
+        if (students.length === 0) {
+            setStatus('Belum ada siswa dengan wajah terdaftar. Daftarkan wajah melalui aktivasi akun siswa.', 'error');
+
+            return;
+        }
+
+        const matcher = new faceapi.FaceMatcher(
+            students.map(
+                (student) =>
+                    new faceapi.LabeledFaceDescriptors(
+                        String(student.id),
+                        student.descriptors.map((sample) => new Float32Array(sample)),
+                    ),
+            ),
+            MATCH_THRESHOLD,
+        );
+
+        const names = new Map(students.map((student) => [String(student.id), student.name]));
 
         // --- Scan state machine: scanning → blink challenge → record → cooldown.
         let matchedId = null;

@@ -12,8 +12,18 @@ use Spatie\Permission\PermissionRegistrar;
 class RolePermissionSeeder extends Seeder
 {
     /**
-     * Seed the nine SMARTSIS roles and their permissions per the PRD access
-     * matrix (PRD section 3.1 / KAK section 5.4).
+     * Reset every role back to its shipped defaults instead of preserving the
+     * permissions an admin configured on "Manajemen Peran".
+     */
+    public bool $forceDefaults = false;
+
+    /**
+     * Seed the nine SMARTSIS roles and their default permissions per the PRD
+     * access matrix (PRD section 3.1 / KAK section 5.4).
+     *
+     * Roles that already exist keep whatever an admin has configured on
+     * "Manajemen Peran" — only newly created roles receive the defaults — so
+     * re-running the seeder never silently reverts a customised matrix.
      */
     public function run(): void
     {
@@ -28,109 +38,22 @@ class RolePermissionSeeder extends Seeder
         // syncing them onto roles below.
         $registrar->forgetCachedPermissions();
 
-        foreach ($this->matrix() as $roleValue => $permissions) {
-            $role = Role::findOrCreate($roleValue);
-            $role->syncPermissions($permissions);
+        foreach (UserRole::cases() as $role) {
+            $model = Role::whereName($role->value)->first();
+
+            if ($model === null) {
+                Role::findOrCreate($role->value)->syncPermissions($role->defaultPermissions());
+
+                continue;
+            }
+
+            // Super Admin always holds everything, including permissions added
+            // by a later release.
+            if ($role->isLocked() || $this->forceDefaults) {
+                $model->syncPermissions($role->defaultPermissions());
+            }
         }
-    }
 
-    /**
-     * Map each role to the permissions it should hold.
-     *
-     * Super Admin is granted every permission (and additionally bypasses all
-     * checks via a Gate::before rule registered in AppServiceProvider).
-     *
-     * @return array<string, array<int, string>>
-     */
-    private function matrix(): array
-    {
-        $p = fn (PermissionEnum $permission): string => $permission->value;
-
-        return [
-            UserRole::SuperAdmin->value => PermissionEnum::values(),
-
-            UserRole::KepalaSekolah->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ViewWarning),
-            ],
-
-            UserRole::WakasekKesiswaan->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ViewWarning),
-            ],
-
-            UserRole::GuruBk->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ManageViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ManagePoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::ManageAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ViewWarning),
-                $p(PermissionEnum::ManageWarning),
-            ],
-
-            UserRole::WaliKelas->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ViewWarning),
-            ],
-
-            UserRole::GuruPiket->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ManageAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::InputViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ManagePermit),
-            ],
-
-            UserRole::GuruMapel->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-            ],
-
-            UserRole::Siswa->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::RequestAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::RequestPermit),
-                $p(PermissionEnum::ViewWarning),
-            ],
-
-            UserRole::OrangTua->value => [
-                $p(PermissionEnum::ViewDashboard),
-                $p(PermissionEnum::ViewAttendance),
-                $p(PermissionEnum::ViewViolation),
-                $p(PermissionEnum::ViewPoint),
-                $p(PermissionEnum::ViewAchievement),
-                $p(PermissionEnum::ViewPermit),
-                $p(PermissionEnum::ViewWarning),
-            ],
-        ];
+        $registrar->forgetCachedPermissions();
     }
 }

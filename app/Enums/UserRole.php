@@ -39,6 +39,135 @@ enum UserRole: string
     }
 
     /**
+     * A short description of who holds the role, shown on "Manajemen Peran".
+     */
+    public function description(): string
+    {
+        return match ($this) {
+            self::SuperAdmin => 'Administrator sistem, memiliki seluruh akses tanpa terkecuali.',
+            self::KepalaSekolah => 'Pimpinan sekolah, memantau seluruh laporan kesiswaan.',
+            self::WakasekKesiswaan => 'Penanggung jawab bidang kesiswaan.',
+            self::GuruBk => 'Bimbingan konseling, menangani pelanggaran dan pembinaan siswa.',
+            self::WaliKelas => 'Pembina kelas, memantau siswa di kelas binaannya.',
+            self::GuruPiket => 'Petugas piket harian, mengelola absensi dan perizinan.',
+            self::GuruMapel => 'Guru pengajar mata pelajaran.',
+            self::Siswa => 'Peserta didik, mengajukan izin dan prestasi.',
+            self::OrangTua => 'Orang tua/wali, memantau perkembangan anaknya.',
+        };
+    }
+
+    /**
+     * Whether the role's permissions are fixed and may not be edited.
+     *
+     * Super Admin bypasses every gate through the Gate::before rule in
+     * AppServiceProvider, so editing its permission list would be misleading.
+     */
+    public function isLocked(): bool
+    {
+        return $this === self::SuperAdmin;
+    }
+
+    /**
+     * The permissions the role ships with, per the PRD access matrix
+     * (PRD section 3.1 / KAK section 5.4).
+     *
+     * These are the defaults applied by RolePermissionSeeder and restored by
+     * the "Kembalikan ke Bawaan" action on the role editor. The permissions a
+     * role actually holds live in the database and may differ once an admin
+     * has customised them.
+     *
+     * @return array<int, string>
+     */
+    public function defaultPermissions(): array
+    {
+        return match ($this) {
+            self::SuperAdmin => Permission::values(),
+
+            self::KepalaSekolah, self::WakasekKesiswaan => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ViewPoint,
+                Permission::ViewAchievement,
+                Permission::ViewPermit,
+                Permission::ViewWarning,
+            ]),
+
+            self::GuruBk => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ManageViolation,
+                Permission::ViewPoint,
+                Permission::ManagePoint,
+                Permission::ViewAchievement,
+                Permission::ManageAchievement,
+                Permission::ViewPermit,
+                Permission::ViewWarning,
+                Permission::ManageWarning,
+            ]),
+
+            self::WaliKelas => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ViewPoint,
+                Permission::ViewAchievement,
+                Permission::ViewPermit,
+                Permission::ViewWarning,
+            ]),
+
+            self::GuruPiket => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ManageAttendance,
+                Permission::ViewViolation,
+                Permission::InputViolation,
+                Permission::ViewPoint,
+                Permission::ViewPermit,
+                Permission::ManagePermit,
+            ]),
+
+            self::GuruMapel => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+            ]),
+
+            self::Siswa => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ViewPoint,
+                Permission::ViewAchievement,
+                Permission::RequestAchievement,
+                Permission::ViewPermit,
+                Permission::RequestPermit,
+                Permission::ViewWarning,
+            ]),
+
+            self::OrangTua => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ViewPoint,
+                Permission::ViewAchievement,
+                Permission::ViewPermit,
+                Permission::ViewWarning,
+            ]),
+        };
+    }
+
+    /**
+     * @param  array<int, Permission>  $permissions
+     * @return array<int, string>
+     */
+    private static function permissionValues(array $permissions): array
+    {
+        return array_map(fn (Permission $permission): string => $permission->value, $permissions);
+    }
+
+    /**
      * All role backed values.
      *
      * @return array<int, string>

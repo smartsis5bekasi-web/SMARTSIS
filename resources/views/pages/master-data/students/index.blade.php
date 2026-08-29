@@ -440,7 +440,7 @@ new #[Title('Siswa')] class extends Component {
                     <th class="px-4 py-3 text-right font-medium">Status</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100 text-gray-700">
+            <tbody class="divide-y divide-gray-100 text-gray-700 whitespace-nowrap">
                 @forelse ($this->students as $key => $student)
                     <tr wire:key="{{ $student->id }}" class="hover:bg-gray-50">
                         <td class="px-4 py-3">{{ $key + $this->students->firstItem() }}</td>
@@ -519,7 +519,7 @@ new #[Title('Siswa')] class extends Component {
                                     @endforeach
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100 text-gray-700">
+                            <tbody class="divide-y divide-gray-100 text-gray-700 whitespace-nowrap">
                                 @foreach (array_slice($this->sampleRows(), 1) as $row)
                                     <tr wire:key="sample-row-{{ $loop->index }}">
                                         @foreach ($row as $cell)

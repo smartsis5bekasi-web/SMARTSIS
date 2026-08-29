@@ -12,7 +12,9 @@ use Livewire\Component;
 new #[Title('Pengaturan Absensi')] class extends Component {
     public AttendanceSetting $setting;
 
-    public string $late_after = '07:00';
+    public string $check_in_start = '07:00';
+
+    public string $late_after = '07:30';
 
     public string $check_out_after = '15:00';
 
@@ -23,6 +25,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
     public function mount(): void
     {
         $this->setting = AttendanceSetting::current();
+        $this->check_in_start = substr($this->setting->check_in_start, 0, 5);
         $this->late_after = substr($this->setting->late_after, 0, 5);
         $this->check_out_after = substr($this->setting->check_out_after, 0, 5);
         $this->late_rule_id = $this->setting->late_rule_id;
@@ -52,7 +55,8 @@ new #[Title('Pengaturan Absensi')] class extends Component {
     protected function rules(): array
     {
         return [
-            'late_after' => ['required', 'date_format:H:i'],
+            'check_in_start' => ['required', 'date_format:H:i'],
+            'late_after' => ['required', 'date_format:H:i', 'after:check_in_start'],
             'check_out_after' => ['required', 'date_format:H:i', 'after:late_after'],
             'late_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
             'alpha_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
@@ -65,6 +69,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
         $this->setting->update([
             ...$data,
+            'check_in_start' => $data['check_in_start'].':00',
             'late_after' => $data['late_after'].':00',
             'check_out_after' => $data['check_out_after'].':00',
         ]);
@@ -76,7 +81,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <x-ui.page-header :title="__('Pengaturan Absensi')" :subtitle="__('Atur jam terlambat, jam pulang, dan aturan poin otomatis.')">
+    <x-ui.page-header :title="__('Pengaturan Absensi')" :subtitle="__('Atur jam buka absensi, batas terlambat, jam pulang, dan aturan poin otomatis.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('attendance.absensi')" wire:navigate>
                 {{ __('Kembali') }}
@@ -86,6 +91,16 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
     <form wire:submit="save" class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="flex flex-col">
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Absensi Masuk Mulai') }} <span class="text-red-500">*</span></label>
+                <input type="time" wire:model="check_in_start"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                <span class="mt-1 text-xs text-gray-400">{{ __('Absensi masuk baru diterima mulai jam ini.') }}</span>
+                @error('check_in_start')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Terlambat Setelah') }} <span class="text-red-500">*</span></label>
                 <input type="time" wire:model="late_after"

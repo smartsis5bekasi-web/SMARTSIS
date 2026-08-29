@@ -51,6 +51,9 @@ new #[Title('Tambah Siswa')] class extends Component {
      */
     protected function rules(): array
     {
+        $maxDate = now()->subYears(14)->format('Y-m-d');
+        $minDate = now()->subYears(20)->format('Y-m-d');
+
         return [
             'name' => ['required', 'string', 'max:100'],
             'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],

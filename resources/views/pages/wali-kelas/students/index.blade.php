@@ -65,7 +65,7 @@ new #[Title('Siswa Kelas')] class extends Component {
                         <th class="px-4 py-2.5 text-center">{{ __('Aksi') }}</th>
                     </tr>
                 </thead>
-                <tbody class="rounded-2xl bg-white text-gray-700">
+                <tbody class="rounded-2xl bg-white text-gray-700 whitespace-nowrap">
                     @forelse ($this->students as $key => $student)
                         <tr>
                             <td class="px-4 py-2.5">{{ $key + $this->students->firstItem() }}</td>

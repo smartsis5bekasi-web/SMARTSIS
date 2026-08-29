@@ -8,17 +8,6 @@ beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 });
 
-/**
- * A verified Super Admin, who bypasses every gate.
- */
-function adminUser(): User
-{
-    $user = User::factory()->create();
-    $user->assignRole(UserRole::SuperAdmin->value);
-
-    return $user;
-}
-
 $routes = [
     'master-data.academic-years',
     'master-data.majors',

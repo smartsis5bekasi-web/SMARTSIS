@@ -118,3 +118,16 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+/* Ionicons + Livewire morph (icons vanish after search/filter/pagination).
+   Ionicons is a Stencil bundle: it injects `ion-icon{visibility:hidden}
+   .hydrated{visibility:inherit}` and marks each upgraded element by adding the
+   `hydrated` class. Livewire re-renders patch attributes from the server HTML,
+   which never contains that class, so a morphed <ion-icon> loses `hydrated` and
+   stays invisible forever. Stencil only hydrates an element once, so it never
+   comes back. Keeping un-flagged icons visible is safe — an icon that has not
+   hydrated yet has no shadow content to flash. The `:not()` guarantees this wins
+   on specificity no matter where Stencil injects its style tag. */
+ion-icon:not(.hydrated) {
+    visibility: inherit;
+}

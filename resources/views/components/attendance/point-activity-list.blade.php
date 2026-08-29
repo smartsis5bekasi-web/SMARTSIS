@@ -10,6 +10,10 @@
     A "Penambahan"/"Pengurangan" panel for the student Development Point page.
     Lists point_logs with the rule name, note, date and signed delta, plus a
     "Lihat Semua" toggle wired to a Livewire boolean via $toggle().
+
+    The date shown is when the absence/violation happened, not when the entry
+    was written — see PointLog::occurredAt(). Eager-load `source` on the query
+    feeding this, otherwise every row costs an extra query.
 --}}
 <div class="rounded-xl border border-gray-100 bg-white shadow-sm">
     <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
@@ -26,7 +30,7 @@
             <li class="flex items-center justify-between gap-4 px-6 py-4">
                 <div class="min-w-0">
                     <p class="truncate font-medium text-gray-800">{{ $log->pointRule?->name ?? $log->note ?? __('Penyesuaian') }}</p>
-                    <p class="text-xs text-gray-400">{{ $log->created_at?->translatedFormat('d M Y') }}</p>
+                    <p class="text-xs text-gray-400">{{ $log->occurredAt()?->translatedFormat('d M Y') }}</p>
                 </div>
                 <span class="shrink-0 font-semibold tabular-nums {{ $log->delta >= 0 ? 'text-green-600' : 'text-red-600' }}">
                     {{ $log->delta > 0 ? '+' : '' }}{{ $log->delta }}

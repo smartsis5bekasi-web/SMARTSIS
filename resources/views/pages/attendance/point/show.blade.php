@@ -88,7 +88,7 @@ new #[Title('Development Point')] class extends Component {
     private function logsOfType(PointType $type, bool $all): Collection
     {
         return $this->student->pointLogs()
-            ->with('pointRule')
+            ->with(['pointRule', 'source'])
             ->where('type', $type)
             ->latest()
             ->when(! $all, fn ($query) => $query->limit(5))

@@ -147,7 +147,7 @@ new #[Title('Kelas')] class extends Component {
                     <th class="px-4 py-3 text-right font-medium">{{ __('Aksi') }}</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-100 text-gray-700">
+            <tbody class="divide-y divide-gray-100 text-gray-700 whitespace-nowrap">
                 @forelse ($this->classrooms as $classroom)
                     <tr wire:key="{{ $classroom->id }}" class="hover:bg-gray-50">
                         <td class="px-4 py-3 font-medium text-gray-900">{{ $classroom->name }}</td>

@@ -59,6 +59,9 @@ test('creating a student via master data uses the configured initial point', fun
     Livewire::test('pages::master-data.students.create')
         ->set('name', 'Hafidz')
         ->set('nis', '0012345678')
+        ->set('email', 'hafidz@smartsis.test')
+        ->set('password', 'rahasia123')
+        ->set('birth_date', now()->subYears(16)->format('Y-m-d'))
         ->set('classroom_id', $classroom->id)
         ->call('save')
         ->assertHasNoErrors();

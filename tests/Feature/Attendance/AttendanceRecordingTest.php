@@ -40,6 +40,7 @@ function setupAttendanceRules(): AttendanceSetting
 
     $setting = AttendanceSetting::current();
     $setting->update([
+        'check_in_start' => '06:00:00',
         'late_after' => '07:00:00',
         'check_out_after' => '15:00:00',
         'late_rule_id' => $late->id,
@@ -199,7 +200,12 @@ test('the alpha sweep only marks students without a record', function () {
 });
 
 test('no points are deducted when the setting has no rule wired', function () {
-    AttendanceSetting::current(); // defaults: no late/alpha rules linked
+    // Defaults leave late/alpha unlinked; pin the times so the scenario does
+    // not shift when the shipped defaults do.
+    AttendanceSetting::current()->update([
+        'check_in_start' => '06:00:00',
+        'late_after' => '07:00:00',
+    ]);
     Carbon::setTestNow(now()->setTime(7, 30));
 
     $student = Student::factory()->create();
@@ -209,4 +215,37 @@ test('no points are deducted when the setting has no rule wired', function () {
     expect($attendance->status)->toBe(AttendanceStatus::Terlambat)
         ->and($student->fresh()->current_point)->toBe(100)
         ->and(PointLog::query()->count())->toBe(0);
+});
+
+test('check-in before the window opens is rejected', function () {
+    AttendanceSetting::current()->update(['check_in_start' => '06:00:00']);
+    Carbon::setTestNow(now()->setTime(5, 30));
+
+    $student = Student::factory()->create();
+
+    expect(fn () => app(RecordAttendance::class)->checkIn($student, adminUser()))
+        ->toThrow(AttendanceException::class, 'Absensi masuk baru dibuka pukul 06:00.');
+
+    expect($student->attendances()->count())->toBe(0);
+});
+
+test('check-in exactly when the window opens is accepted', function () {
+    AttendanceSetting::current()->update(['check_in_start' => '06:00:00']);
+    Carbon::setTestNow(now()->setTime(6, 0));
+
+    $student = Student::factory()->create();
+
+    $attendance = app(RecordAttendance::class)->checkIn($student, adminUser());
+
+    expect($attendance->status)->toBe(AttendanceStatus::Hadir);
+});
+
+test('a widened check-in window lets an earlier scan through', function () {
+    AttendanceSetting::current()->update(['check_in_start' => '05:00:00']);
+    Carbon::setTestNow(now()->setTime(5, 30));
+
+    $student = Student::factory()->create();
+
+    expect(app(RecordAttendance::class)->checkIn($student, adminUser())->status)
+        ->toBe(AttendanceStatus::Hadir);
 });

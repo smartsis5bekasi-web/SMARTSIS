@@ -63,7 +63,7 @@ new #[Title('Tambah Siswa')] class extends Component {
 
         return [
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:225', Rule::unique('users', 'email')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'password' => ['required', 'string', 'min:8'],
             'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
             'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],

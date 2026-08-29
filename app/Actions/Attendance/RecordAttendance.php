@@ -25,7 +25,8 @@ class RecordAttendance
      * Record the morning check-in; the status (Hadir/Terlambat) follows the
      * configured late threshold.
      *
-     * @throws AttendanceException when today's attendance is already recorded
+     * @throws AttendanceException when the window has not opened yet, or
+     *                             today's attendance is already recorded
      */
     public function checkIn(Student $student, User $by, string $method = 'face'): Attendance
     {
@@ -37,6 +38,11 @@ class RecordAttendance
         }
 
         $setting = AttendanceSetting::current();
+
+        if (! $setting->isCheckInOpen($now)) {
+            throw AttendanceException::checkInNotOpen(substr($setting->check_in_start, 0, 5));
+        }
+
         $status = $setting->checkInStatus($now);
         $rule = $setting->ruleFor($status);
         $note = null;

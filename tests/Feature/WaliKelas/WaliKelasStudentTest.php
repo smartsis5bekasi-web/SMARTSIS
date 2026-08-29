@@ -50,6 +50,7 @@ test('creating a student auto-assigns the wali kelas teacher and class major', f
         ->assertSet('classroom_id', $classroom->id)
         ->set('name', 'Budi')
         ->set('nis', '0012345678')
+        ->set('birth_date', now()->subYears(16)->format('Y-m-d'))
         ->call('save')
         ->assertHasNoErrors()
         ->assertRedirect(route('wali-kelas.students.index'));

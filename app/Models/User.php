@@ -22,6 +22,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property int $id
  * @property string $name
  * @property string $email
+ * @property string|null $avatar_url
  * @property bool $is_active
  * @property Carbon|null $email_verified_at
  * @property string $password
@@ -31,13 +32,21 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Student|null $student
+ * @property-read Teacher|null $teacher
+ * @property-read ParentGuardian|null $parentGuardian
  */
-#[Fillable(['name', 'email', 'password', 'is_active'])]
+#[Fillable(['name', 'email', 'avatar_url', 'password', 'is_active'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasRoles, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+
+    /** Memo for {@see avatarOwner()}; null is a real answer, hence the flag. */
+    private Student|Teacher|null $avatarOwner = null;
+
+    private bool $avatarOwnerResolved = false;
 
     /**
      * Get the attributes that should be cast.
@@ -108,6 +117,54 @@ class User extends Authenticatable implements PasskeyUser
         }
 
         return null;
+    }
+
+    /**
+     * The record this account's photo lives on.
+     *
+     * Students and teachers already carry an official photo on their profile
+     * record, which is what the rest of the app (tables, letters, the kiosk)
+     * shows — so the account reuses it rather than keeping a second copy that
+     * could drift. Accounts with neither profile keep the photo on their own
+     * row and get null here.
+     *
+     * Resolved through the relation query rather than the magic property so
+     * the "no profile" case stays visible in the type, and memoised because
+     * the layout asks for the avatar several times per page.
+     */
+    private function avatarOwner(): Student|Teacher|null
+    {
+        if (! $this->avatarOwnerResolved) {
+            $this->avatarOwner = $this->student()->first() ?? $this->teacher()->first();
+            $this->avatarOwnerResolved = true;
+        }
+
+        return $this->avatarOwner;
+    }
+
+    /**
+     * The photo shown for this account, if it has one.
+     */
+    public function avatarUrl(): ?string
+    {
+        return $this->avatarOwner()?->avatar_url ?? $this->avatar_url;
+    }
+
+    /**
+     * Write a new photo back to whichever record {@see avatarUrl()} reads from,
+     * so the account photo and the profile photo can never disagree.
+     */
+    public function storeAvatarUrl(?string $url): void
+    {
+        $owner = $this->avatarOwner();
+
+        if ($owner !== null) {
+            $owner->update(['avatar_url' => $url]);
+
+            return;
+        }
+
+        $this->update(['avatar_url' => $url]);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PointType;
+use Carbon\CarbonInterface;
 use Database\Factories\PointLogFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -62,6 +63,31 @@ class PointLog extends Model
     public function source(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * The day the thing behind this entry actually happened, which is not the
+     * day the entry was written.
+     *
+     * A guru piket catching up on a week of absences marks Monday through
+     * Thursday in one sitting on Thursday afternoon; every log row then carries
+     * Thursday's `created_at`, and a student looking at their history sees four
+     * identical "Alpha, Thursday" lines for four different days. So each source
+     * reports its own date and `created_at` is only the fallback for manual
+     * adjustments that have no source.
+     */
+    public function occurredAt(): ?CarbonInterface
+    {
+        $source = $this->source;
+
+        $occurred = match (true) {
+            $source instanceof Attendance => $source->date,
+            $source instanceof Violation => $source->occurred_on,
+            $source instanceof Achievement => $source->achieved_on,
+            default => null,
+        };
+
+        return $occurred ?? $this->created_at;
     }
 
     /**

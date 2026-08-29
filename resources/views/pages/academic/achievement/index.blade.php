@@ -119,14 +119,15 @@ new #[Title('Prestasi')] class extends Component {
                         <th class="py-3 px-4 text-center">{{ __('Aksi') }}</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white text-gray-700">
+                <tbody class="bg-white text-gray-700 whitespace-nowrap">
                     @forelse ($this->achievements as $key => $achievement)
                         <tr class="border-b last:border-0">
                             <td class="py-3 px-4">{{ $key + $this->achievements->firstItem() }}</td>
                             @unless ($this->isStudent())
                                 <td class="py-3 px-4">{{ $achievement->student?->name ?? '—' }}</td>
                             @endunless
-                            <td class="py-3 px-4 font-medium">{{ $achievement->title }}</td>
+                            {{-- Free text: cap it so one long title cannot stretch the whole table. --}}
+                            <td class="max-w-[16rem] truncate py-3 px-4 font-medium" title="{{ $achievement->title }}">{{ $achievement->title }}</td>
                             <td class="py-3 px-4">{{ $achievement->level ?? '—' }}</td>
                             <td class="py-3 px-4 font-semibold text-green-600 tabular-nums">
                                 +{{ $achievement->pointRule?->point ?? 0 }}

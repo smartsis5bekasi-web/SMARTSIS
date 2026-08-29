@@ -54,15 +54,19 @@ test('a siswa self-scanning only ever sees and records their own face template',
 
     $this->actingAs($siswa);
 
-    $component = Livewire::test('pages::attendance.absensi.index');
+    // The templates now come from their own endpoint rather than the page
+    // markup, so that is where the 1:1 scoping has to hold.
+    $templates = $this->getJson(route('attendance.absensi.face-templates'))
+        ->assertOk()
+        ->json();
 
-    expect($component->get('faceStudents'))->toHaveCount(1)
-        ->and($component->get('faceStudents')[0]['id'])->toBe($own->id);
+    expect($templates)->toHaveCount(1)
+        ->and($templates[0]['id'])->toBe($own->id);
 
     // Even if the browser payload is tampered with to pass another
     // student's id, the server pins the recorded student to the siswa's own
     // linked record.
-    $component->call('record', $other->id);
+    Livewire::test('pages::attendance.absensi.index')->call('record', $other->id);
 
     expect($own->attendances()->count())->toBe(1)
         ->and($other->attendances()->count())->toBe(0);

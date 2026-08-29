@@ -15,15 +15,17 @@
             </x-slot:actions>
         </x-ui.page-header>
 --}}
-<div class="flex flex-wrap items-end justify-between gap-3">
-    <div>
+<div class="flex w-full min-w-0 flex-wrap items-end justify-between gap-3">
+    <div class="min-w-0">
         <h1 class="text-2xl font-bold text-gray-800">{{ $title }}</h1>
         @if ($subtitle)
             <p class="mt-1 text-sm text-gray-500">{{ $subtitle }}</p>
         @endif
     </div>
 
+    {{-- Wraps: a page with four actions would otherwise push the whole layout
+         wider than a phone screen and scroll the body sideways. --}}
     @isset($actions)
-        <div class="flex items-center gap-2">{{ $actions }}</div>
+        <div class="flex flex-wrap items-center gap-2">{{ $actions }}</div>
     @endisset
 </div>

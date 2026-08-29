@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\UserRole;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,10 +49,18 @@ expect()->extend('toBeOne', function () {
 /**
  * Create a verified user assigned to the given role.
  */
-function userWithRole(App\Enums\UserRole $role): App\Models\User
+function userWithRole(UserRole $role): User
 {
-    $user = App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $user->assignRole($role->value);
 
     return $user;
+}
+
+/**
+ * Create a verified Super Admin, who bypasses every gate.
+ */
+function adminUser(): User
+{
+    return userWithRole(UserRole::SuperAdmin);
 }

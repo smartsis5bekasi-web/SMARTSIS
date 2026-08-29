@@ -2,6 +2,7 @@
 
 use App\Enums\Permission;
 use App\Enums\UserRole;
+use App\Http\Controllers\Attendance\FaceTemplateController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login')->name('home');
@@ -37,6 +38,17 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
         });
 
+    // Manajemen Peran lives in the Master Data section but is gated separately:
+    // editing the access matrix is a strictly higher privilege than editing the
+    // records it protects.
+    Route::middleware('permission:'.Permission::ManageRole->value)
+        ->prefix('master-data')
+        ->name('master-data.')
+        ->group(function () {
+            Route::livewire('peran', 'pages::master-data.roles.index')->name('roles.index');
+            Route::livewire('peran/{role}/edit', 'pages::master-data.roles.edit')->name('roles.edit');
+        });
+
     Route::middleware('role:'.UserRole::WaliKelas->value)
         ->prefix('wali-kelas')
         ->name('wali-kelas.')
@@ -58,6 +70,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('absensi/scan', 'pages::attendance.absensi.scan')
                 ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.UserRole::Siswa->value)
                 ->name('absensi.scan');
+            Route::get('absensi/face-templates', FaceTemplateController::class)
+                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.UserRole::Siswa->value)
+                ->name('absensi.face-templates');
             Route::livewire('absensi/pengaturan', 'pages::attendance.absensi.settings')
                 ->middleware('permission:'.Permission::ManageAttendance->value)
                 ->name('absensi.settings');

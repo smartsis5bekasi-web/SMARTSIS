@@ -66,26 +66,33 @@
                         </div>
                     @endcanany
 
-                    @can(\App\Enums\Permission::ManageMasterData->value)
+                    @canany([\App\Enums\Permission::ManageMasterData->value, \App\Enums\Permission::ManageRole->value])
                         <div class="flex flex-col gap-1">
                             <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Master Data') }}</p>
-                            <x-ui.sidebar-item icon="calendar-outline" :href="route('master-data.academic-years')" :active="request()->routeIs('master-data.academic-years*')">
-                                {{ __('Tahun Ajaran') }}
-                            </x-ui.sidebar-item>
-                            <x-ui.sidebar-item icon="school-outline" :href="route('master-data.majors')" :active="request()->routeIs('master-data.majors*')">
-                                {{ __('Jurusan') }}
-                            </x-ui.sidebar-item>
-                            <x-ui.sidebar-item icon="business-outline" :href="route('master-data.classrooms')" :active="request()->routeIs('master-data.classrooms*')">
-                                {{ __('Kelas') }}
-                            </x-ui.sidebar-item>
-                            <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
-                                {{ __('Guru') }}
-                            </x-ui.sidebar-item>
-                            <x-ui.sidebar-item icon="person-outline" :href="route('master-data.students.index')" :active="request()->routeIs('master-data.students*')">
-                                {{ __('Siswa') }}
-                            </x-ui.sidebar-item>
+                            @can(\App\Enums\Permission::ManageMasterData->value)
+                                <x-ui.sidebar-item icon="calendar-outline" :href="route('master-data.academic-years')" :active="request()->routeIs('master-data.academic-years*')">
+                                    {{ __('Tahun Ajaran') }}
+                                </x-ui.sidebar-item>
+                                <x-ui.sidebar-item icon="school-outline" :href="route('master-data.majors')" :active="request()->routeIs('master-data.majors*')">
+                                    {{ __('Jurusan') }}
+                                </x-ui.sidebar-item>
+                                <x-ui.sidebar-item icon="business-outline" :href="route('master-data.classrooms')" :active="request()->routeIs('master-data.classrooms*')">
+                                    {{ __('Kelas') }}
+                                </x-ui.sidebar-item>
+                                <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
+                                    {{ __('Guru') }}
+                                </x-ui.sidebar-item>
+                                <x-ui.sidebar-item icon="person-outline" :href="route('master-data.students.index')" :active="request()->routeIs('master-data.students*')">
+                                    {{ __('Siswa') }}
+                                </x-ui.sidebar-item>
+                            @endcan
+                            @can(\App\Enums\Permission::ManageRole->value)
+                                <x-ui.sidebar-item icon="shield-checkmark-outline" :href="route('master-data.roles.index')" :active="request()->routeIs('master-data.roles*')">
+                                    {{ __('Manajemen Peran') }}
+                                </x-ui.sidebar-item>
+                            @endcan
                         </div>
-                    @endcan
+                    @endcanany
                 </nav>
             </flux:sidebar.nav>
         </flux:sidebar>
@@ -96,10 +103,13 @@
 
             <flux:spacer />
 
+            <livewire:pages::notifications.bell />
+
             <flux:dropdown position="bottom" align="end">
                 <flux:profile
                     :name="auth()->user()->name"
-                    :initials="auth()->user()->initials()"
+                    :avatar="auth()->user()->avatarUrl()"
+                    :initials="auth()->user()->avatarUrl() ? null : auth()->user()->initials()"
                     icon-trailing="chevron-down"
                 />
 
@@ -109,7 +119,8 @@
                             <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
                                 <flux:avatar
                                     :name="auth()->user()->name"
-                                    :initials="auth()->user()->initials()"
+                                    :src="auth()->user()->avatarUrl()"
+                                    :initials="auth()->user()->avatarUrl() ? null : auth()->user()->initials()"
                                 />
 
                                 <div class="grid flex-1 text-start text-sm leading-tight">
