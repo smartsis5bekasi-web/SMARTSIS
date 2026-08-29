@@ -36,6 +36,10 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
             Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
+            Route::livewire('orang-tua', 'pages::master-data.parents.index')->name('parents.index');
+            Route::livewire('orang-tua/tambah', 'pages::master-data.parents.create')->name('parents.create');
+            Route::livewire('orang-tua/{parent}', 'pages::master-data.parents.show')->name('parents.show');
+            Route::livewire('orang-tua/{parent}/edit', 'pages::master-data.parents.edit')->name('parents.edit');
         });
 
     // Manajemen Peran lives in the Master Data section but is gated separately:
@@ -108,6 +112,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('ajukan', 'pages::permit.create')
                 ->middleware('permission:'.Permission::RequestPermit->value)
                 ->name('create');
+            Route::livewire('input-manual', 'pages::permit.manual')
+                ->middleware('permission:'.Permission::ManagePermit->value)
+                ->name('manual');
             Route::livewire('cetak', 'pages::permit.print')
                 ->middleware('permission:'.Permission::ManagePermit->value)
                 ->name('print');
@@ -143,7 +150,7 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
                 ->middleware('permission:'.Permission::RequestAchievement->value.'|'.Permission::ManageAchievement->value)
                 ->name('achievements.create');
             Route::livewire('prestasi/{achievement}/edit', 'pages::academic.achievement.edit')
-                ->middleware('permission:'.Permission::RequestAchievement->value.'|'.Permission::ManageAchievement->value)
+                ->middleware('permission:'.Permission::RequestAchievement->value.'|'.Permission::EditAchievement->value.'|'.Permission::ManageAchievement->value)
                 ->name('achievements.edit');
             Route::livewire('prestasi/{achievement}', 'pages::academic.achievement.show')
                 ->middleware('permission:'.Permission::ViewAchievement->value)

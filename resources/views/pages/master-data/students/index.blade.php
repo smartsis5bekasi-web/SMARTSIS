@@ -23,7 +23,8 @@ use Livewire\WithPagination;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use App\Livewire\Concerns\TogglesUserActiveStatus; 
-
+use App\Enums\UserRole;
+use App\Models\User;
 
 new #[Title('Siswa')] class extends Component {
     use ImportsSpreadsheetRows;
@@ -121,7 +122,8 @@ new #[Title('Siswa')] class extends Component {
             ->when($this->status !== '', function (Builder $query) {
                 $isActive = $this->status === 'active';
                 $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive)); })
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(10);
     }
 
@@ -162,180 +164,208 @@ new #[Title('Siswa')] class extends Component {
     }
 
     public function import(): void
-    {
-        $this->importErrors = [];
+{
+    $this->importErrors = [];
 
-        $this->validate(
-            ['importFile' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:5120']],
-            [
-                'importFile.required' => __('Pilih file terlebih dahulu.'),
-                'importFile.mimes' => __('File harus berformat Excel (.xlsx) atau CSV.'),
-                'importFile.max' => __('Ukuran file maksimal 5MB.'),
-            ],
-        );
+    $this->validate(
+        ['importFile' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:5120']],
+        [
+            'importFile.required' => __('Pilih file terlebih dahulu.'),
+            'importFile.mimes' => __('File harus berformat Excel (.xlsx) atau CSV.'),
+            'importFile.max' => __('Ukuran file maksimal 5MB.'),
+        ],
+    );
 
-        [$rows, $formatError] = $this->parseImportFile(['nama', 'nis', 'kelas']);
+    [$rows, $formatError] = $this->parseImportFile(['nama', 'nis', 'email', 'kelas']);
 
-        if ($formatError !== null) {
-            $this->importErrors = [$formatError];
+    if ($formatError !== null) {
+        $this->importErrors = [$formatError];
 
-            return;
-        }
-
-        if ($rows === []) {
-            $this->importErrors = [__('File tidak berisi data siswa.')];
-
-            return;
-        }
-
-        $classrooms = Classroom::query()->get()->mapWithKeys(fn (Classroom $classroom) => [mb_strtolower($classroom->name) => $classroom->id]);
-        $majors = Major::query()->get()->mapWithKeys(fn (Major $major) => [mb_strtolower($major->name) => $major->id]);
-
-        $prepared = [];
-        $errors = [];
-        $seenNis = [];
-        $seenNisn = [];
-
-        foreach ($rows as $line => $row) {
-            $validator = Validator::make($row, [
-                'nama' => ['required', 'string', 'max:100'],
-                'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
-                'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],
-                'tanggal_lahir' => ['nullable', 'date_format:Y-m-d'],
-                'alamat' => ['nullable', 'string', 'max:255'],
-                'kelas' => ['required'],
-                'orang_tua' => ['nullable', 'string', 'max:100'],
-                'telepon_orang_tua' => ['nullable', 'string', 'max:20'],
-            ], [
-                'nama.required' => __('kolom nama wajib diisi'),
-                'nama.max' => __('nama maksimal 100 karakter'),
-                'nis.required' => __('kolom nis wajib diisi'),
-                'nis.max' => __('NIS maksimal 30 karakter'),
-                'nis.unique' => __('NIS sudah terdaftar'),
-                'nisn.max' => __('NISN maksimal 30 karakter'),
-                'nisn.unique' => __('NISN sudah terdaftar'),
-                'tanggal_lahir.date_format' => __('format tanggal lahir harus YYYY-MM-DD'),
-                'alamat.max' => __('alamat maksimal 255 karakter'),
-                'kelas.required' => __('kolom kelas wajib diisi'),
-                'orang_tua.max' => __('nama orang tua maksimal 100 karakter'),
-                'telepon_orang_tua.max' => __('telepon orang tua maksimal 20 karakter'),
-            ]);
-
-            $rowErrors = $validator->errors()->all();
-
-            $classroomId = isset($row['kelas']) ? $classrooms->get(mb_strtolower($row['kelas'])) : null;
-
-            if (isset($row['kelas']) && $classroomId === null) {
-                $rowErrors[] = __('kelas ":value" tidak ditemukan, lihat sheet Referensi pada template', ['value' => $row['kelas']]);
-            }
-
-            $majorId = null;
-
-            if (isset($row['jurusan'])) {
-                $majorId = $majors->get(mb_strtolower($row['jurusan']));
-
-                if ($majorId === null) {
-                    $rowErrors[] = __('jurusan ":value" tidak ditemukan, lihat sheet Referensi pada template', ['value' => $row['jurusan']]);
-                }
-            }
-
-            $gender = null;
-
-            if (isset($row['jenis_kelamin'])) {
-                $gender = match (mb_strtolower($row['jenis_kelamin'])) {
-                    'l', 'laki-laki' => 'L',
-                    'p', 'perempuan' => 'P',
-                    default => null,
-                };
-
-                if ($gender === null) {
-                    $rowErrors[] = __('jenis kelamin ":value" tidak dikenali, gunakan L atau P', ['value' => $row['jenis_kelamin']]);
-                }
-            }
-
-            $relationship = null;
-
-            if (isset($row['orang_tua'])) {
-                $relationship = match (mb_strtolower($row['hubungan'] ?? 'wali')) {
-                    'ayah' => 'Ayah',
-                    'ibu' => 'Ibu',
-                    'wali' => 'Wali',
-                    default => null,
-                };
-
-                if ($relationship === null) {
-                    $rowErrors[] = __('hubungan ":value" tidak dikenali, gunakan Ayah/Ibu/Wali', ['value' => $row['hubungan']]);
-                }
-            }
-
-            if (isset($row['nis'], $seenNis[$row['nis']])) {
-                $rowErrors[] = __('NIS duplikat dengan baris :line', ['line' => $seenNis[$row['nis']]]);
-            }
-
-            if (isset($row['nisn'], $seenNisn[$row['nisn']])) {
-                $rowErrors[] = __('NISN duplikat dengan baris :line', ['line' => $seenNisn[$row['nisn']]]);
-            }
-
-            if ($rowErrors !== []) {
-                $errors[] = __('Baris :line: :messages', ['line' => $line, 'messages' => implode('; ', $rowErrors)]);
-
-                continue;
-            }
-
-            if (isset($row['nis'])) {
-                $seenNis[$row['nis']] = $line;
-            }
-
-            if (isset($row['nisn'])) {
-                $seenNisn[$row['nisn']] = $line;
-            }
-
-            $prepared[] = [
-                'name' => $row['nama'],
-                'nis' => $row['nis'],
-                'nisn' => $row['nisn'] ?? null,
-                'gender' => $gender,
-                'birth_date' => $row['tanggal_lahir'] ?? null,
-                'address' => $row['alamat'] ?? null,
-                'classroom_id' => $classroomId,
-                'major_id' => $majorId,
-                'parent' => isset($row['orang_tua']) ? [
-                    'name' => $row['orang_tua'],
-                    'relationship' => $relationship,
-                    'phone' => $row['telepon_orang_tua'] ?? null,
-                ] : null,
-            ];
-        }
-
-        if ($errors !== []) {
-            $this->importErrors = $errors;
-
-            return;
-        }
-
-        DB::transaction(function () use ($prepared): void {
-            foreach ($prepared as $row) {
-                $parentRow = $row['parent'];
-                unset($row['parent']);
-
-                $student = Student::create($row);
-
-                if ($parentRow !== null) {
-                    $parent = ParentGuardian::create([
-                        'name' => $parentRow['name'],
-                        'phone' => $parentRow['phone'],
-                    ]);
-
-                    $student->parents()->attach($parent->id, ['relationship' => $parentRow['relationship']]);
-                }
-            }
-        });
-
-        $this->closeImportModal();
-        $this->resetPage();
-
-        $this->dispatch('swal', icon: 'success', title: __(':count siswa berhasil diimpor.', ['count' => count($prepared)]));
+        return;
     }
+
+    if ($rows === []) {
+        $this->importErrors = [__('File tidak berisi data siswa.')];
+
+        return;
+    }
+
+    $classrooms = Classroom::query()->get()->mapWithKeys(fn (Classroom $classroom) => [mb_strtolower($classroom->name) => $classroom->id]);
+    $majors = Major::query()->get()->mapWithKeys(fn (Major $major) => [mb_strtolower($major->name) => $major->id]);
+
+    $prepared = [];
+    $errors = [];
+    $seenNis = [];
+    $seenNisn = [];
+    $seenEmails = [];
+
+    foreach ($rows as $line => $row) {
+        $validator = Validator::make($row, [
+            'nama' => ['required', 'string', 'max:100'],
+            'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')],
+            'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'password' => ['nullable', 'string', 'min:8'],
+            'tanggal_lahir' => ['nullable', 'date_format:Y-m-d'],
+            'alamat' => ['nullable', 'string', 'max:255'],
+            'kelas' => ['required'],
+            'orang_tua' => ['nullable', 'string', 'max:100'],
+            'telepon_orang_tua' => ['nullable', 'string', 'max:20'],
+        ], [
+            'nama.required' => __('kolom nama wajib diisi'),
+            'nama.max' => __('nama maksimal 100 karakter'),
+            'nis.required' => __('kolom nis wajib diisi'),
+            'nis.max' => __('NIS maksimal 30 karakter'),
+            'nis.unique' => __('NIS sudah terdaftar'),
+            'nisn.max' => __('NISN maksimal 30 karakter'),
+            'nisn.unique' => __('NISN sudah terdaftar'),
+            'email.required' => __('kolom email wajib diisi'),
+            'email.email' => __('format email tidak valid'),
+            'email.unique' => __('email sudah terdaftar'),
+            'password.min' => __('password minimal 8 karakter'),
+            'tanggal_lahir.date_format' => __('format tanggal lahir harus YYYY-MM-DD'),
+            'alamat.max' => __('alamat maksimal 255 karakter'),
+            'kelas.required' => __('kolom kelas wajib diisi'),
+            'orang_tua.max' => __('nama orang tua maksimal 100 karakter'),
+            'telepon_orang_tua.max' => __('telepon orang tua maksimal 20 karakter'),
+        ]);
+
+        $rowErrors = $validator->errors()->all();
+
+        $classroomId = isset($row['kelas']) ? $classrooms->get(mb_strtolower($row['kelas'])) : null;
+
+        if (isset($row['kelas']) && $classroomId === null) {
+            $rowErrors[] = __('kelas ":value" tidak ditemukan, lihat sheet Referensi pada template', ['value' => $row['kelas']]);
+        }
+
+        $majorId = null;
+
+        if (isset($row['jurusan'])) {
+            $majorId = $majors->get(mb_strtolower($row['jurusan']));
+
+            if ($majorId === null) {
+                $rowErrors[] = __('jurusan ":value" tidak ditemukan, lihat sheet Referensi pada template', ['value' => $row['jurusan']]);
+            }
+        }
+
+        $gender = null;
+
+        if (isset($row['jenis_kelamin'])) {
+            $gender = match (mb_strtolower($row['jenis_kelamin'])) {
+                'l', 'laki-laki' => 'L',
+                'p', 'perempuan' => 'P',
+                default => null,
+            };
+
+            if ($gender === null) {
+                $rowErrors[] = __('jenis kelamin ":value" tidak dikenali, gunakan L atau P', ['value' => $row['jenis_kelamin']]);
+            }
+        }
+
+        $relationship = null;
+
+        if (isset($row['orang_tua'])) {
+            $relationship = match (mb_strtolower($row['hubungan'] ?? 'wali')) {
+                'ayah' => 'Ayah',
+                'ibu' => 'Ibu',
+                'wali' => 'Wali',
+                default => null,
+            };
+
+            if ($relationship === null) {
+                $rowErrors[] = __('hubungan ":value" tidak dikenali, gunakan Ayah/Ibu/Wali', ['value' => $row['hubungan']]);
+            }
+        }
+
+        $email = mb_strtolower((string) ($row['email'] ?? ''));
+
+        if ($email !== '' && isset($seenEmails[$email])) {
+            $rowErrors[] = __('email duplikat dengan baris :line', ['line' => $seenEmails[$email]]);
+        }
+
+        if (isset($row['nis'], $seenNis[$row['nis']])) {
+            $rowErrors[] = __('NIS duplikat dengan baris :line', ['line' => $seenNis[$row['nis']]]);
+        }
+
+        if (isset($row['nisn'], $seenNisn[$row['nisn']])) {
+            $rowErrors[] = __('NISN duplikat dengan baris :line', ['line' => $seenNisn[$row['nisn']]]);
+        }
+
+        if ($rowErrors !== []) {
+            $errors[] = __('Baris :line: :messages', ['line' => $line, 'messages' => implode('; ', $rowErrors)]);
+
+            continue;
+        }
+
+        $seenEmails[$email] = $line;
+
+        if (isset($row['nis'])) {
+            $seenNis[$row['nis']] = $line;
+        }
+
+        if (isset($row['nisn'])) {
+            $seenNisn[$row['nisn']] = $line;
+        }
+
+        $prepared[] = [
+            'name' => $row['nama'],
+            'nis' => $row['nis'],
+            'nisn' => $row['nisn'] ?? null,
+            'email' => $row['email'],
+            'password' => $row['password'] ?? 'password',
+            'gender' => $gender,
+            'birth_date' => $row['tanggal_lahir'] ?? null,
+            'address' => $row['alamat'] ?? null,
+            'classroom_id' => $classroomId,
+            'major_id' => $majorId,
+            'parent' => isset($row['orang_tua']) ? [
+                'name' => $row['orang_tua'],
+                'relationship' => $relationship,
+                'phone' => $row['telepon_orang_tua'] ?? null,
+            ] : null,
+        ];
+    }
+
+    if ($errors !== []) {
+        $this->importErrors = $errors;
+
+        return;
+    }
+
+    DB::transaction(function () use ($prepared): void {
+        foreach ($prepared as $row) {
+            $parentRow = $row['parent'];
+            $email = $row['email'];
+            $password = $row['password'];
+            unset($row['parent'], $row['email'], $row['password']);
+
+            $user = User::create([
+                'name' => $row['name'],
+                'email' => $email,
+                'password' => $password,
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ]);
+            $user->assignRole(UserRole::Siswa->value);
+
+            $student = Student::create([...$row, 'user_id' => $user->id]);
+
+            if ($parentRow !== null) {
+                $parent = ParentGuardian::create([
+                    'name' => $parentRow['name'],
+                    'phone' => $parentRow['phone'],
+                ]);
+
+                $student->parents()->attach($parent->id, ['relationship' => $parentRow['relationship']]);
+            }
+        }
+    });
+
+    $this->closeImportModal();
+    $this->resetPage();
+
+    $this->dispatch('swal', icon: 'success', title: __(':count siswa berhasil diimpor.', ['count' => count($prepared)]));
+}
 
     /**
      * Template header + sample rows shown in the modal, sourced from the

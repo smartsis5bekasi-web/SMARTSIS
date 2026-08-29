@@ -33,7 +33,7 @@ class StudentTemplateSheet extends StringValueBinder implements FromArray, Shoul
      */
     public function headings(): array
     {
-        return ['nama', 'nis', 'nisn', 'jenis_kelamin', 'tanggal_lahir', 'alamat', 'kelas', 'jurusan', 'orang_tua', 'hubungan', 'telepon_orang_tua'];
+        return ['nama', 'nis', 'nisn', 'email', 'password', 'jenis_kelamin', 'tanggal_lahir', 'alamat', 'kelas', 'jurusan', 'orang_tua', 'hubungan', 'telepon_orang_tua'];
     }
 
     /**
@@ -45,8 +45,8 @@ class StudentTemplateSheet extends StringValueBinder implements FromArray, Shoul
         $jurusan = Major::query()->orderBy('name')->value('name') ?? 'IPA';
 
         return [
-            ['Ahmad Fauzi', '2024001', '0051234567', 'L', '2008-03-15', 'Jl. Merdeka No. 1', $kelas, $jurusan, 'Budi Fauzi', 'Ayah', '081234567890'],
-            ['Dewi Lestari', '2024002', '', 'P', '2008-07-20', '', $kelas, '', 'Sari Lestari', 'Ibu', '081298765432'],
+            ['Ahmad Fauzi', '2024001', '0051234567', 'siswa@smartis.com', 'password', 'L', '2008-03-15', 'Jl. Merdeka No. 1', $kelas, $jurusan, 'Budi Fauzi', 'Ayah', '081234567890'],
+            ['Dewi Lestari', '2024002', '', 'siswa@smartis.com', 'password', 'P', '2008-07-20', '', $kelas, '', 'Sari Lestari', 'Ibu', '081298765432'],
         ];
     }
 

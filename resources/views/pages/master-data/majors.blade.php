@@ -31,7 +31,8 @@ new #[Title('Jurusan')] class extends Component {
                     ->where('name', 'like', '%'.trim($this->search).'%')
                     ->orWhere('code', 'like', '%'.trim($this->search).'%'),
             ))
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(10);
     }
 

@@ -79,7 +79,7 @@ new #[Title('Tambah Tahun Ajaran')] class extends Component {
             <x-ui.button variant="secondary" :href="route('master-data.academic-years')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
-            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
+            <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

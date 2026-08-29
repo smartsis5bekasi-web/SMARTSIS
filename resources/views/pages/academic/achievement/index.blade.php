@@ -42,6 +42,14 @@ new #[Title('Prestasi')] class extends Component {
         ]);
     }
 
+    /**
+     * Whether the signed-in user may edit the row's record.
+     */
+    public function canEdit(Achievement $achievement): bool
+    {
+        return $achievement->isEditableBy(auth()->user());
+    }
+
     public function isStudent(): bool
     {
         return auth()->user()->primaryRole() === UserRole::Siswa;
@@ -141,12 +149,21 @@ new #[Title('Prestasi')] class extends Component {
                                 ])>{{ $achievement->status->label() }}</span>
                             </td>
                             <td class="py-3 px-4 text-sm text-gray-500">{{ $achievement->achieved_on?->translatedFormat('d M Y') ?? '—' }}</td>
-                            <td class="py-3 px-4 text-center">
-                                <a href="{{ route('academic.achievements.show', $achievement) }}" wire:navigate
-                                    class="inline-flex items-center gap-1 text-primary-600 transition hover:text-primary-700">
-                                    <ion-icon name="eye-outline" class="text-lg"></ion-icon>
-                                    <span class="text-sm">{{ __('Detail') }}</span>
-                                </a>
+                            <td class="py-3 px-4">
+                                <div class="flex items-center justify-center gap-3">
+                                    <a href="{{ route('academic.achievements.show', $achievement) }}" wire:navigate
+                                        class="inline-flex items-center gap-1 text-primary-600 transition hover:text-primary-700">
+                                        <ion-icon name="eye-outline" class="text-lg"></ion-icon>
+                                        <span class="text-sm">{{ __('Detail') }}</span>
+                                    </a>
+                                    @if ($this->canEdit($achievement))
+                                        <a href="{{ route('academic.achievements.edit', $achievement) }}" wire:navigate
+                                            class="inline-flex items-center gap-1 text-amber-600 transition hover:text-amber-700">
+                                            <ion-icon name="create-outline" class="text-lg"></ion-icon>
+                                            <span class="text-sm">{{ __('Edit') }}</span>
+                                        </a>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty

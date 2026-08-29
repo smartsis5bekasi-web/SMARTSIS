@@ -78,13 +78,9 @@ new #[Title('Detail Prestasi')] class extends Component {
         $this->redirectRoute('academic.achievements', navigate: true);
     }
 
-    /**
-     * Pending records are editable by their owner or a manager.
-     */
     public function canEdit(): bool
     {
-        return $this->achievement->isPending()
-            && ($this->canManage() || auth()->user()->student?->id === $this->achievement->student_id);
+        return $this->achievement->isEditableBy(auth()->user());
     }
 
     /**

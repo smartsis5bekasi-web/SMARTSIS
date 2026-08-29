@@ -93,7 +93,8 @@ new #[Title('Guru')] class extends Component {
                 $isActive = $this->status === 'active';
                 $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive));
             })
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(10);
     }
 

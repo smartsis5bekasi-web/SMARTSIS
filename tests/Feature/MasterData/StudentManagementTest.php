@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\UserRole;
 use App\Models\Classroom;
 use App\Models\Major;
 use App\Models\ParentGuardian;
@@ -131,7 +132,7 @@ test('replacing the avatar deletes the previous file', function () {
     Storage::disk('public')->assertExists(Str::after($student->refresh()->avatar_url, '/storage/'));
 });
 
-test('creating a student with parents links them with the relationship', function () {
+test('creating a student with new parents gives each of them a login account', function () {
     $classroom = Classroom::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
@@ -141,21 +142,47 @@ test('creating a student with parents links them with the relationship', functio
         ->set('classroom_id', $classroom->id)
         ->call('addParent')
         ->set('parents.0.name', 'Budi Hartono')
-        ->set('parents.0.relationship', 'Ayah')
+        ->set('parents.0.email', 'budi.hartono@example.test')
         ->set('parents.0.phone', '081234567890')
+        ->set('parents.0.relationship', 'Ayah')
         ->call('addParent')
         ->set('parents.1.name', 'Siti Aminah')
+        ->set('parents.1.email', 'siti.aminah@example.test')
+        ->set('parents.1.phone', '081234567891')
         ->set('parents.1.relationship', 'Ibu')
         ->call('save')
         ->assertHasNoErrors();
 
     $student = Student::firstWhere('nis', '0012345678');
+    $ayah = $student->parents->firstWhere('name', 'Budi Hartono');
 
     expect($student->parents)->toHaveCount(2)
-        ->and($student->parents->firstWhere('name', 'Budi Hartono')->pivot->relationship)->toBe('Ayah')
-        ->and($student->parents->firstWhere('name', 'Budi Hartono')->phone)->toBe('081234567890')
-        ->and($student->parents->firstWhere('name', 'Siti Aminah')->pivot->relationship)->toBe('Ibu')
-        ->and($student->parents->firstWhere('name', 'Budi Hartono')->user_id)->toBeNull();
+        ->and($ayah->pivot->relationship)->toBe('Ayah')
+        ->and($ayah->phone)->toBe('081234567890')
+        ->and($student->parents->firstWhere('name', 'Siti Aminah')->pivot->relationship)->toBe('Ibu');
+
+    // Every parent added through the form is reachable: an account with the
+    // Orang Tua role, so they can sign in and follow their child.
+    expect($ayah->user)->not->toBeNull()
+        ->and($ayah->user->email)->toBe('budi.hartono@example.test')
+        ->and($ayah->user->hasRole(UserRole::OrangTua->value))->toBeTrue();
+});
+
+test('a new parent row requires an email and a phone number', function () {
+    $classroom = Classroom::factory()->create();
+
+    Livewire::test('pages::master-data.students.create')
+        ->set(requiredStudentInput())
+        ->set('name', 'Hafidz')
+        ->set('nis', '0012345678')
+        ->set('classroom_id', $classroom->id)
+        ->call('addParent')
+        ->set('parents.0.name', 'Budi Hartono')
+        ->call('save')
+        ->assertHasErrors([
+            'parents.0.email' => 'required',
+            'parents.0.phone' => 'required',
+        ]);
 });
 
 test('a parent row requires a name', function () {
@@ -171,22 +198,53 @@ test('a parent row requires a name', function () {
         ->assertHasErrors(['parents.0.name' => 'required']);
 });
 
-test('editing preloads the linked parents and updates them', function () {
+test('editing preloads the linked parents and updates the relationship', function () {
     $classroom = Classroom::factory()->create();
     $student = Student::factory()->create(['classroom_id' => $classroom->id]);
-    $parent = ParentGuardian::factory()->withoutAccount()->create(['name' => 'Budi Lama']);
+    $parent = ParentGuardian::factory()->withoutAccount()->create(['name' => 'Budi Hartono']);
     $student->parents()->attach($parent->id, ['relationship' => 'Ayah']);
 
+    // The parent record itself is owned by master data > orang tua; this form
+    // only decides who is linked to the student and as what.
     Livewire::test('pages::master-data.students.edit', ['student' => $student])
-        ->assertSet('parents.0.name', 'Budi Lama')
+        ->assertSet('parents.0.parent_id', $parent->id)
+        ->assertSet('parents.0.name', 'Budi Hartono')
         ->assertSet('parents.0.relationship', 'Ayah')
-        ->set('parents.0.name', 'Budi Baru')
         ->set('parents.0.relationship', 'Wali')
         ->call('save')
         ->assertHasNoErrors();
 
-    expect($parent->refresh()->name)->toBe('Budi Baru')
-        ->and($student->parents()->first()->pivot->relationship)->toBe('Wali');
+    expect($student->parents()->first())
+        ->name->toBe('Budi Hartono')
+        ->pivot->relationship->toBe('Wali');
+});
+
+test('editing links an existing parent found through the search box', function () {
+    $classroom = Classroom::factory()->create();
+    $student = Student::factory()->create(['classroom_id' => $classroom->id]);
+    $parent = ParentGuardian::factory()->withoutAccount()->create([
+        'name' => 'Siti Aminah',
+        'phone' => '081234567890',
+    ]);
+
+    $component = Livewire::test('pages::master-data.students.edit', ['student' => $student])
+        ->call('addParent')
+        ->set('parents.0.search', 'Siti');
+
+    expect($component->instance()->parentSearchResults(0)->pluck('id'))->toContain($parent->id);
+
+    $component->call('selectParent', 0, $parent->id)
+        ->assertSet('parents.0.parent_id', $parent->id)
+        ->assertSet('parents.0.name', 'Siti Aminah')
+        ->set('parents.0.relationship', 'Ibu')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->parents()->count())->toBe(1)
+        ->and($student->parents()->first()->pivot->relationship)->toBe('Ibu');
+
+    // Linking must reuse the record, never duplicate it.
+    expect(ParentGuardian::where('name', 'Siti Aminah')->count())->toBe(1);
 });
 
 test('removing a parent row detaches it and deletes an orphaned record', function () {
@@ -245,9 +303,9 @@ test('importing a valid csv creates students with relations and parents', functi
     $major = Major::factory()->create(['name' => 'IPA']);
 
     $csv = implode("\n", [
-        'nama;nis;nisn;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
-        'Ahmad Fauzi;2024001;0051234567;L;2008-03-15;Jl. Merdeka No. 1;X IPA 1;IPA;Budi Fauzi;Ayah;081234567890',
-        'Dewi Lestari;2024002;;Perempuan;;;x ipa 1;;;;',
+        'nama;nis;nisn;email;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
+        'Ahmad Fauzi;2024001;0051234567;ahmad.fauzi@example.test;L;2008-03-15;Jl. Merdeka No. 1;X IPA 1;IPA;Budi Fauzi;Ayah;081234567890',
+        'Dewi Lestari;2024002;;dewi.lestari@example.test;Perempuan;;;x ipa 1;;;;',
     ]);
 
     Livewire::test('pages::master-data.students.index')
@@ -277,6 +335,12 @@ test('importing a valid csv creates students with relations and parents', functi
     $ahmad = Student::where('nis', '2024001')->first();
     $parent = $ahmad->parents()->first();
 
+    // Every imported row carries an email, so each student lands with a login
+    // account already attached.
+    expect($ahmad->user)->not->toBeNull()
+        ->and($ahmad->user->email)->toBe('ahmad.fauzi@example.test')
+        ->and($ahmad->user->hasRole(UserRole::Siswa->value))->toBeTrue();
+
     expect($parent)->not->toBeNull()
         ->and($parent->name)->toBe('Budi Fauzi')
         ->and($parent->pivot->relationship)->toBe('Ayah')
@@ -290,10 +354,10 @@ test('siswa import rejects unknown kelas and duplicate nis, creating nothing', f
     Student::factory()->create(['nis' => '2024001']);
 
     $csv = implode("\n", [
-        'nama;nis;nisn;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
-        'Valid Siswa;2024009;;;;;X IPA 1;;;;',
-        'Dupe Nis;2024001;;;;;X IPA 1;;;;',
-        'Kelas Salah;2024010;;;;;XII Tidak Ada;;;;',
+        'nama;nis;nisn;email;jenis_kelamin;tanggal_lahir;alamat;kelas;jurusan;orang_tua;hubungan;telepon_orang_tua',
+        'Valid Siswa;2024009;;valid.siswa@example.test;;;;X IPA 1;;;;',
+        'Dupe Nis;2024001;;dupe.nis@example.test;;;;X IPA 1;;;;',
+        'Kelas Salah;2024010;;kelas.salah@example.test;;;;XII Tidak Ada;;;;',
     ]);
 
     $component = Livewire::test('pages::master-data.students.index')
@@ -304,4 +368,12 @@ test('siswa import rejects unknown kelas and duplicate nis, creating nothing', f
 
     $this->assertDatabaseMissing('students', ['nis' => '2024009']);
     $this->assertDatabaseMissing('students', ['nis' => '2024010']);
+});
+
+test('the siswa list shows the newest entries first', function () {
+    $older = Student::factory()->create(['name' => 'Zulkifli Lama', 'created_at' => now()->subDay()]);
+    $newer = Student::factory()->create(['name' => 'Andi Baru', 'created_at' => now()]);
+
+    Livewire::test('pages::master-data.students.index')
+        ->assertSeeInOrder([$newer->name, $older->name]);
 });

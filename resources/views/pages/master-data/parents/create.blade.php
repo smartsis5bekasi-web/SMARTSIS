@@ -1,72 +1,39 @@
 <?php
 
 use App\Enums\UserRole;
-use App\Models\Teacher;
+use App\Models\ParentGuardian;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
-new #[Title('Edit Guru')] class extends Component
-{
+new #[Title('Tambah Orang Tua')] class extends Component {
     use WithFileUploads;
-
-    public Teacher $teacher;
 
     public string $name = '';
 
     public string $email = '';
 
-    public ?string $nip = null;
-
     public ?string $phone = null;
-
-    public string $role = '';
 
     public string $password = '';
 
     public ?TemporaryUploadedFile $avatar = null;
-
-    public function mount(Teacher $teacher): void
-    {
-        $teacher->loadMissing('user');
-
-        $this->teacher = $teacher;
-        $this->name = $teacher->name;
-        $this->email = $teacher->user?->email ?? '';
-        $this->nip = $teacher->nip;
-        $this->phone = $teacher->phone;
-        $this->role = $teacher->user?->primaryRole()?->value ?? '';
-    }
-
-    /**
-     * Roles a teacher account may hold.
-     *
-     * @return array<int, UserRole>
-     */
-    public function roleOptions(): array
-    {
-        return UserRole::teacherRoles();
-    }
 
     /**
      * @return array<string, array<int, mixed>>
      */
     protected function rules(): array
     {
-        $userId = $this->teacher->user_id;
-
         return [
             'name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($userId)],
-            'nip' => ['nullable', 'string', 'max:30', Rule::unique('teachers', 'nip')->ignore($this->teacher->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
             'phone' => ['nullable', 'string', 'max:30'],
-            'role' => ['required', Rule::in(array_map(fn (UserRole $role): string => $role->value, $this->roleOptions()))],
-            'password' => ['nullable', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:8'],
             'avatar' => ['nullable', 'image', 'max:2048'],
         ];
     }
@@ -78,43 +45,37 @@ new #[Title('Edit Guru')] class extends Component
         $avatarUrl = null;
 
         if ($this->avatar) {
-            $avatarUrl = Storage::url($this->avatar->store('teachers', 'public'));
-
-            if ($this->teacher->avatar_url) {
-                Storage::disk('public')->delete(Str::after($this->teacher->avatar_url, '/storage/'));
-            }
+            $avatarUrl = Storage::url($this->avatar->store('parents', 'public'));
         }
 
         DB::transaction(function () use ($data, $avatarUrl): void {
-            $user = $this->teacher->user;
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => $data['password'],
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ]);
+            $user->assignRole(UserRole::OrangTua->value);
 
-            $user->fill(['name' => $data['name'], 'email' => $data['email']]);
-            if (filled($data['password'])) {
-                $user->password = $data['password'];
-            }
-            $user->save();
-            $user->syncRoles([$data['role']]);
-
-            $attributes = ['name' => $data['name'], 'nip' => $data['nip'], 'phone' => $data['phone']];
-
-            // Only overwrite the stored photo when a new one was uploaded.
-            if ($avatarUrl !== null) {
-                $attributes['avatar_url'] = $avatarUrl;
-            }
-
-            $this->teacher->update($attributes);
+            ParentGuardian::create([
+                'user_id' => $user->id,
+                'name' => $data['name'],
+                'avatar_url' => $avatarUrl,
+                'phone' => $data['phone'],
+            ]);
         });
 
-        toast(__('Data guru diperbarui.'), 'success');
+        toast(__('Data orang tua ditambahkan.'), 'success');
 
-        $this->redirectRoute('master-data.teachers', navigate: true);
+        $this->redirectRoute('master-data.parents.index', navigate: true);
     }
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    <x-ui.page-header :title="__('Edit Guru')" :subtitle="__('Perbarui data guru beserta akun login.')">
+    <x-ui.page-header :title="__('Tambah Orang Tua')" :subtitle="__('Isi data orang tua beserta akun login.')">
         <x-slot:actions>
-            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.teachers')" wire:navigate>
+            <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.parents.index')" wire:navigate>
                 {{ __('Kembali') }}
             </x-ui.button>
         </x-slot:actions>
@@ -127,9 +88,9 @@ new #[Title('Edit Guru')] class extends Component
             <div class="h-[200px] w-[200px] cursor-pointer rounded-2xl border-2 border-dashed border-primary-400 bg-gray-100"
                 @click="$refs.avatar.click()">
                 <img class="h-[196px] w-[196px] rounded-2xl object-cover"
-                    src="{{ $teacher->avatar_url ?? asset('assets/placeholder.png') }}"
-                    x-bind:src="photoPreview ?? '{{ $teacher->avatar_url ?? asset('assets/placeholder.png') }}'"
-                    alt="{{ $teacher->name }}">
+                    src="{{ asset('assets/placeholder.png') }}"
+                    x-bind:src="photoPreview ?? '{{ asset('assets/placeholder.png') }}'"
+                    alt="{{ __('Foto Profil') }}">
             </div>
             <input type="file" wire:model="avatar" x-ref="avatar" class="hidden" accept="image/*"
                 x-on:change="
@@ -145,21 +106,12 @@ new #[Title('Edit Guru')] class extends Component
             @enderror
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+        <div class="mb-8 grid grid-cols-1 gap-8 md:grid-cols-2">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama Lengkap') }} <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="name" placeholder="Budi Santoso"
+                <input type="text" wire:model="name" placeholder="Siti Aminah"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('name')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">NIP</label>
-                <input type="text" wire:model="nip" placeholder="198001012005011001"
-                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                @error('nip')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>
@@ -174,21 +126,8 @@ new #[Title('Edit Guru')] class extends Component
             </div>
 
             <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Peran') }} <span class="text-red-500">*</span></label>
-                <x-slim-select wire:model="role" placeholder="{{ __('Pilih peran') }}">
-                    <option value="">{{ __('Pilih peran') }}</option>
-                    @foreach ($this->roleOptions() as $roleOption)
-                        <option value="{{ $roleOption->value }}">{{ $roleOption->label() }}</option>
-                    @endforeach
-                </x-slim-select>
-                @error('role')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
-            </div>
-
-            <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Email') }} <span class="text-red-500">*</span></label>
-                <input type="email" wire:model="email" placeholder="budi@sekolah.sch.id"
+                <input type="email" wire:model="email" placeholder="siti@email.com"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('email')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -196,10 +135,9 @@ new #[Title('Edit Guru')] class extends Component
             </div>
 
             <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Password') }}</label>
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Password') }} <span class="text-red-500">*</span></label>
                 <input type="password" wire:model="password"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                <span class="mt-1 text-sm text-gray-500">{{ __('Biarkan kosong jika tidak ingin mengubah.') }}</span>
                 @error('password')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
@@ -207,7 +145,7 @@ new #[Title('Edit Guru')] class extends Component
         </div>
 
         <div class="flex justify-end gap-2">
-            <x-ui.button variant="secondary" :href="route('master-data.teachers')" wire:navigate>
+            <x-ui.button variant="secondary" :href="route('master-data.parents.index')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
             <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>

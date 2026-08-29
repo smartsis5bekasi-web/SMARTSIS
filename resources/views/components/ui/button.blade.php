@@ -12,7 +12,7 @@
             {{ __('Tambah') }}
         </x-ui.button>
 
-        <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
+        <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>
 
     Variants: primary (brand), secondary (neutral/outline), danger.
 --}}

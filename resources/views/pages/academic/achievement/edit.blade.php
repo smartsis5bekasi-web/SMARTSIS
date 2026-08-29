@@ -1,8 +1,6 @@
 <?php
 
-use App\Enums\Permission;
 use App\Enums\PointSource;
-use App\Enums\UserRole;
 use App\Models\Achievement;
 use App\Models\PointRule;
 use Illuminate\Database\Eloquent\Collection;
@@ -97,23 +95,9 @@ new #[Title('Edit Prestasi')] class extends Component {
         $this->redirectRoute('academic.achievements', navigate: true);
     }
 
-    /**
-     * Only pending records may be edited, by their owning student or a manager.
-     */
     private function canEdit(Achievement $achievement): bool
     {
-        if (! $achievement->isPending()) {
-            return false;
-        }
-
-        $user = auth()->user();
-
-        if ($user->can(Permission::ManageAchievement->value)) {
-            return true;
-        }
-
-        return $user->primaryRole() === UserRole::Siswa
-            && $user->student?->id === $achievement->student_id;
+        return $achievement->isEditableBy(auth()->user());
     }
 }; ?>
 
@@ -200,7 +184,7 @@ new #[Title('Edit Prestasi')] class extends Component {
             <x-ui.button variant="secondary" :href="route('academic.achievements')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
-            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
+            <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

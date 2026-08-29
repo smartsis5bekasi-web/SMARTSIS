@@ -1,147 +1,154 @@
     <?php
 
     use App\Enums\Permission;
-    use App\Enums\PermitStatus;
-    use App\Enums\PermitType;
-    use App\Enums\UserRole;
-    use App\Models\Permit;
-    use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-    use Illuminate\Database\Eloquent\Builder;
-    use Livewire\Attributes\Computed;
-    use Livewire\Attributes\Title;
-    use Livewire\Component;
-    use Livewire\WithPagination;
-    use App\Exports\PermitExport;
-    use Maatwebsite\Excel\Facades\Excel;
-    use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use App\Enums\PermitStatus;
+use App\Enums\PermitType;
+use App\Enums\UserRole;
+use App\Exports\PermitExport;
+use App\Models\Permit;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Title;
+use Livewire\Component;
+use Livewire\WithPagination;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
+new #[Title('Perizinan')] class extends Component
+{
+    use WithPagination;
 
-    new #[Title('Perizinan')] class extends Component {
-        use WithPagination;
+    public string $search = '';
 
-        public string $search = '';
+    public string $status = '';
 
-        public string $status = '';
+    public string $type = '';
 
-        public string $type = '';
-
-        public function updating(string $property): void
-        {
-            if (in_array($property, ['status', 'type'], true)) {
-                $this->resetPage();
-            }
-        }
-
-    /**
-         * @return LengthAwarePaginator<int, Permit>
-         */
-        #[Computed]
-        public function permits(): LengthAwarePaginator
-        {
-            return $this->scopedQuery()
-                ->with(['student.classroom', 'decider'])
-                ->when(trim($this->search) !== '', function (Builder $query) {
-                    $searchTerm = '%' . trim($this->search) . '%';
-                    $query->whereHas('student', function (Builder $q) use ($searchTerm) {
-                        $q->where('name', 'like', $searchTerm)
-                        ->orWhere('nis', 'like', $searchTerm);
-                    });
-                })
-                ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
-                ->when($this->type !== '', fn (Builder $query) => $query->where('type', $this->type))
-                ->latest()
-                ->paginate(10);
-        }
-
-        /**
-         * Pending requests awaiting the signed-in approver (shown as a hint).
-         */
-        #[Computed]
-        public function pendingCount(): int
-        {
-            return $this->canDecideAny() ? $this->scopedQuery()->where('status', PermitStatus::Pending)->count() : 0;
-        }
-
-        public function isStudent(): bool
-        {
-            return auth()->user()->primaryRole() === UserRole::Siswa;
-        }
-
-        /**
-         * A siswa with a linked student record may submit a request (F-24).
-         */
-        public function canRequest(): bool
-        {
-            return auth()->user()->can(Permission::RequestPermit->value)
-                && auth()->user()->student !== null;
-        }
-
-        /**
-         * Guru Piket (Kelola) and Wali Kelas (kelas binaan) decide permits (F-25).
-         */
-        public function canDecideAny(): bool
-        {
-            return auth()->user()->can(Permission::ManagePermit->value)
-                || auth()->user()->primaryRole() === UserRole::WaliKelas;
-        }
-
-        /**
-         * @return array<int, PermitStatus>
-         */
-        public function statuses(): array
-        {
-            return PermitStatus::cases();
-        }
-
-        /**
-         * @return array<int, PermitType>
-         */
-        public function types(): array
-        {
-            return PermitType::cases();
-        }
-
-        /**
-         * Permits scoped to what the signed-in role may see.
-         *
-         * @return Builder<Permit>
-         */
-        private function scopedQuery(): Builder
-        {
-            $user = auth()->user();
-
-            return match ($user->primaryRole()) {
-                UserRole::Siswa => Permit::query()->where('student_id', $user->student?->id ?? 0),
-                UserRole::OrangTua => Permit::query()->whereIn(
-                    'student_id',
-                    $user->parentGuardian?->students()->pluck('students.id') ?? collect(),
-                ),
-                UserRole::WaliKelas => Permit::query()->whereHas(
-                    'student',
-                    fn (Builder $q) => $q->whereIn('classroom_id', $user->teacher?->homeroomClassrooms()->pluck('id') ?? collect()),
-                ),
-                default => Permit::query(),
-            };
-        }
-
-        public function exportExcel(): BinaryFileResponse
-        {
-            $export = new PermitExport(
-                baseQuery: $this->scopedQuery(),
-                status: $this->status,
-                type: $this->type,
-            );
-
-            return Excel::download($export, 'perizinan-'.now()->format('Y-m-d').'.xlsx');
-        }
-
-       public function resetFilters(): void
-        {
-            $this->reset(['search', 'status', 'type']);
+    public function updating(string $property): void
+    {
+        if (in_array($property, ['status', 'type'], true)) {
             $this->resetPage();
         }
+    }
 
-    }; ?>
+    /**
+     * @return LengthAwarePaginator<int, Permit>
+     */
+    #[Computed]
+    public function permits(): LengthAwarePaginator
+    {
+        return $this->scopedQuery()
+            ->with(['student.classroom', 'decider'])
+            ->when(trim($this->search) !== '', function (Builder $query) {
+                $searchTerm = '%'.trim($this->search).'%';
+                $query->whereHas('student', function (Builder $q) use ($searchTerm) {
+                    $q->where('name', 'like', $searchTerm)
+                        ->orWhere('nis', 'like', $searchTerm);
+                });
+            })
+            ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
+            ->when($this->type !== '', fn (Builder $query) => $query->where('type', $this->type))
+            ->latest()
+            ->paginate(10);
+    }
+
+    /**
+     * Pending requests awaiting the signed-in approver (shown as a hint).
+     */
+    #[Computed]
+    public function pendingCount(): int
+    {
+        return $this->canDecideAny() ? $this->scopedQuery()->where('status', PermitStatus::Pending)->count() : 0;
+    }
+
+    public function isStudent(): bool
+    {
+        return auth()->user()->primaryRole() === UserRole::Siswa;
+    }
+
+    /**
+     * A siswa with a linked student record may submit a request (F-24).
+     */
+    public function canRequest(): bool
+    {
+        return auth()->user()->can(Permission::RequestPermit->value)
+            && auth()->user()->student !== null;
+    }
+
+    /**
+     * Guru Piket (Kelola) and Wali Kelas (kelas binaan) decide permits (F-25).
+     */
+    public function canDecideAny(): bool
+    {
+        return auth()->user()->can(Permission::ManagePermit->value)
+            || auth()->user()->primaryRole() === UserRole::WaliKelas;
+    }
+
+    /**
+     * Guru Piket / admin may record a walk-in permit on a student's behalf.
+     */
+    public function canCreateManual(): bool
+    {
+        return auth()->user()->can(Permission::ManagePermit->value);
+    }
+
+    /**
+     * @return array<int, PermitStatus>
+     */
+    public function statuses(): array
+    {
+        return PermitStatus::cases();
+    }
+
+    /**
+     * @return array<int, PermitType>
+     */
+    public function types(): array
+    {
+        return PermitType::cases();
+    }
+
+    /**
+     * Permits scoped to what the signed-in role may see.
+     *
+     * @return Builder<Permit>
+     */
+    private function scopedQuery(): Builder
+    {
+        $user = auth()->user();
+
+        return match ($user->primaryRole()) {
+            UserRole::Siswa => Permit::query()->where('student_id', $user->student?->id ?? 0),
+            UserRole::OrangTua => Permit::query()->whereIn(
+                'student_id',
+                $user->parentGuardian?->students()->pluck('students.id') ?? collect(),
+            ),
+            UserRole::WaliKelas => Permit::query()->whereHas(
+                'student',
+                fn (Builder $q) => $q->whereIn('classroom_id', $user->teacher?->homeroomClassrooms()->pluck('id') ?? collect()),
+            ),
+            default => Permit::query(),
+        };
+    }
+
+    public function exportExcel(): BinaryFileResponse
+    {
+        $export = new PermitExport(
+            baseQuery: $this->scopedQuery(),
+            status: $this->status,
+            type: $this->type,
+        );
+
+        return Excel::download($export, 'perizinan-'.now()->format('Y-m-d').'.xlsx');
+    }
+
+    public function resetFilters(): void
+    {
+        $this->reset(['search', 'status', 'type']);
+        $this->resetPage();
+    }
+}; ?>
 
     <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Perizinan')"
@@ -163,6 +170,12 @@
 
                     <x-ui.button variant="secondary" icon="download-outline" wire:click="exportExcel">
                         {{ __('Export Excel') }}
+                    </x-ui.button>
+                @endif
+
+                @if ($this->canCreateManual())
+                    <x-ui.button variant="primary" icon="add-outline" :href="route('permits.manual')" wire:navigate>
+                        {{ __('Input Izin Manual') }}
                     </x-ui.button>
                 @endif
 

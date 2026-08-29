@@ -48,8 +48,10 @@ test('guru bk sees the discipline-focused stats', function () {
 
     $this->get(route('dashboard'))
         ->assertOk()
-        ->assertSee('Rata-rata Poin')
-        ->assertSee('Perlu Pembinaan');
+        ->assertSee('Perlu Konseling')
+        ->assertSee('Perlu Pembinaan')
+        ->assertSee('Pemanggilan Ortu')
+        ->assertSee('Siswa Perlu Tindakan / Pembinaan');
 });
 
 test('wali kelas only sees their own homeroom class students', function () {

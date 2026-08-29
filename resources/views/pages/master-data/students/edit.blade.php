@@ -1,11 +1,15 @@
 <?php
 
+use App\Enums\UserRole;
 use App\Models\Classroom;
 use App\Models\Major;
 use App\Models\ParentGuardian;
 use App\Models\Student;
 use App\Models\Teacher;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -14,7 +18,6 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\DB;
 
 new #[Title('Edit Siswa')] class extends Component {
     use WithFileUploads;
@@ -22,6 +25,8 @@ new #[Title('Edit Siswa')] class extends Component {
     public Student $student;
 
     public string $name = '';
+
+    public string $email = '';
 
     public string $nis = '';
 
@@ -39,15 +44,10 @@ new #[Title('Edit Siswa')] class extends Component {
 
     public ?int $teacher_id = null;
 
-    public string $email = '';
-
-
     public ?TemporaryUploadedFile $avatar = null;
 
     /**
-     * Parent/guardian rows linked to the student (F-04).
-     *
-     * @var array<int, array{id: ?int, name: string, relationship: string, phone: ?string}>
+     * @var array<int, array{parent_id: ?int, search: string, creatingNew: bool, name: string, email: string, phone: string, relationship: string}>
      */
     public array $parents = [];
 
@@ -56,15 +56,20 @@ new #[Title('Edit Siswa')] class extends Component {
         $student->loadMissing('user');
 
         $this->student = $student;
+
         $this->parents = $student->parents
             ->map(fn (ParentGuardian $parent): array => [
-                'id' => $parent->id,
+                'parent_id' => $parent->id,
+                'search' => '',
+                'creatingNew' => false,
                 'name' => $parent->name,
+                'email' => $parent->user?->email ?? '',
+                'phone' => $parent->phone ?? '',
                 'relationship' => (string) ($parent->pivot->relationship ?? 'Wali'),
-                'phone' => $parent->phone,
             ])
             ->values()
             ->all();
+
         $this->name = $student->name;
         $this->email = $student->user?->email ?? '';
         $this->nis = $student->nis;
@@ -82,15 +87,12 @@ new #[Title('Edit Siswa')] class extends Component {
      */
     protected function rules(): array
     {
-         $maxDate = now()->subYears(14)->format('Y-m-d');
-         $minDate = now()->subYears(20)->format('Y-m-d');
-
-        return [
+        $rules = [
             'name' => ['required', 'string', 'max:100'],
             'nis' => ['required', 'string', 'max:30', Rule::unique('students', 'nis')->ignore($this->student->id)],
             'nisn' => ['nullable', 'string', 'max:30', Rule::unique('students', 'nisn')->ignore($this->student->id)],
             'gender' => ['nullable', Rule::in(['L', 'P'])],
-            'birth_date' =>  ['required','date',"after_or_equal:{$minDate}","before_or_equal:{$maxDate}"],
+            'birth_date' => ['nullable', 'date'],
             'address' => ['nullable', 'string', 'max:255'],
             'classroom_id' => ['required', Rule::exists('classrooms', 'id')],
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
@@ -104,20 +106,23 @@ new #[Title('Edit Siswa')] class extends Component {
                 Rule::unique('users', 'email')->ignore($this->student->user_id),
             ],
             'parents' => ['array'],
-            'parents.*.id' => ['nullable', Rule::exists('parents', 'id')],
-            'parents.*.name' => ['required', 'string', 'max:100'],
-            'parents.*.relationship' => ['required', Rule::in(self::relationshipOptions())],
-            'parents.*.phone' => ['nullable', 'string', 'max:20'],
         ];
-    }
 
-    protected function messages(): array
-    {
-        return [
-            'birth_date.required' => __('Tanggal lahir wajib diisi.'),
-            'birth_date.before_or_equal' => __('Umur siswa minimal harus 14 tahun.'),
-            'birth_date.after_or_equal' => __('Umur siswa maksimal 20 tahun.'),
-        ];
+        foreach ($this->parents as $index => $row) {
+            $isNew = blank($row['parent_id'] ?? null);
+            $currentUserId = $isNew ? null : ParentGuardian::query()->find($row['parent_id'])?->user_id;
+
+            $rules["parents.{$index}.relationship"] = ['required', Rule::in(self::relationshipOptions())];
+            $rules["parents.{$index}.parent_id"] = ['nullable', Rule::exists('parents', 'id')];
+
+            if ($isNew) {
+                $rules["parents.{$index}.name"] = ['required', 'string', 'max:100'];
+                $rules["parents.{$index}.email"] = ['required', 'email', 'max:255', Rule::unique('users', 'email')];
+                $rules["parents.{$index}.phone"] = ['required', 'string', 'max:20'];
+            }
+        }
+
+        return $rules;
     }
 
     /**
@@ -127,8 +132,9 @@ new #[Title('Edit Siswa')] class extends Component {
     {
         return [
             'parents.*.name' => __('nama orang tua'),
-            'parents.*.relationship' => __('hubungan'),
+            'parents.*.email' => __('email orang tua'),
             'parents.*.phone' => __('no. HP orang tua'),
+            'parents.*.relationship' => __('hubungan'),
         ];
     }
 
@@ -142,7 +148,15 @@ new #[Title('Edit Siswa')] class extends Component {
 
     public function addParent(): void
     {
-        $this->parents[] = ['id' => null, 'name' => '', 'relationship' => 'Ayah', 'phone' => null];
+        $this->parents[] = [
+            'parent_id' => null,
+            'search' => '',
+            'creatingNew' => false,
+            'name' => '',
+            'email' => '',
+            'phone' => '',
+            'relationship' => 'Ayah',
+        ];
     }
 
     public function removeParent(int $index): void
@@ -150,6 +164,62 @@ new #[Title('Edit Siswa')] class extends Component {
         unset($this->parents[$index]);
         $this->parents = array_values($this->parents);
         $this->resetErrorBag('parents.*');
+    }
+
+    /**
+     * @return Collection<int, ParentGuardian>
+     */
+    public function parentSearchResults(int $index): Collection
+    {
+        $term = trim($this->parents[$index]['search'] ?? '');
+
+        if ($term === '') {
+            return collect();
+        }
+
+        return ParentGuardian::query()
+            ->with('user')
+            ->where(fn (Builder $q) => $q
+                ->where('name', 'like', "%{$term}%")
+                ->orWhere('phone', 'like', "%{$term}%")
+                ->orWhereHas('user', fn (Builder $uq) => $uq->where('email', 'like', "%{$term}%")))
+            ->limit(5)
+            ->get();
+    }
+
+    public function selectParent(int $index, int $parentId): void
+    {
+        $parent = ParentGuardian::query()->with('user')->findOrFail($parentId);
+
+        $this->parents[$index]['parent_id'] = $parent->id;
+        $this->parents[$index]['name'] = $parent->name;
+        $this->parents[$index]['email'] = $parent->user?->email ?? '';
+        $this->parents[$index]['phone'] = $parent->phone ?? '';
+        $this->parents[$index]['search'] = '';
+    }
+
+    public function clearParentSelection(int $index): void
+    {
+        $this->parents[$index]['parent_id'] = null;
+        $this->parents[$index]['name'] = '';
+        $this->parents[$index]['email'] = '';
+        $this->parents[$index]['phone'] = '';
+        $this->parents[$index]['search'] = '';
+        $this->parents[$index]['creatingNew'] = false;
+    }
+
+    public function showCreateNewParent(int $index): void
+    {
+        $this->parents[$index]['creatingNew'] = true;
+        $this->parents[$index]['search'] = '';
+    }
+
+    public function cancelCreateNewParent(int $index): void
+    {
+        $this->parents[$index]['creatingNew'] = false;
+        $this->parents[$index]['name'] = '';
+        $this->parents[$index]['email'] = '';
+        $this->parents[$index]['phone'] = '';
     }
 
     /**
@@ -179,51 +249,77 @@ new #[Title('Edit Siswa')] class extends Component {
         return Teacher::query()->orderBy('name')->get();
     }
 
- public function save(): void
-{
-    $data = $this->validate();
-
-    if ($this->avatar) {
-        $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
-
-        if ($this->student->avatar_url) {
-            Storage::disk('public')->delete(Str::after($this->student->avatar_url, '/storage/'));
-        }
+    /**
+     * Format password default akun orang tua: SMARTSIS-{5 karakter acak}-{no telp}
+     */
+    private function generateParentPassword(string $phone): string
+    {
+        return 'SMARTSIS-'.Str::lower(Str::random(5)).'-'.$phone;
     }
 
-    $parentRows = $data['parents'] ?? [];
-    $email = $data['email'];
-    unset($data['avatar'], $data['parents'], $data['email']);
+    public function save(): void
+    {
+        $data = $this->validate();
 
-    DB::transaction(function () use ($data, $email, $parentRows) {
-        $this->student->user?->update(['email' => $email, 'name' => $data['name']]);
+        if ($this->avatar) {
+            $data['avatar_url'] = Storage::url($this->avatar->store('students', 'public'));
 
-        $this->student->update($data);
-        $this->syncParents($parentRows);
-    });
+            if ($this->student->avatar_url) {
+                Storage::disk('public')->delete(Str::after($this->student->avatar_url, '/storage/'));
+            }
+        }
 
-    toast(__('Siswa diperbarui.'), 'success');
+        $parentRows = $data['parents'] ?? [];
+        $email = $data['email'] ?? null;
+        unset($data['avatar'], $data['parents'], $data['email']);
 
-    $this->redirectRoute('master-data.students.index', navigate: true);
-}
+        DB::transaction(function () use ($data, $email, $parentRows) {
+            // Students imported without an account have no user row to update,
+            // and no email to write to it either.
+            if ($this->student->user && filled($email)) {
+                $this->student->user->update(['name' => $data['name'], 'email' => $email]);
+            }
+
+            $this->student->update($data);
+            $this->syncParents($parentRows);
+        });
+
+        toast(__('Siswa diperbarui.'), 'success');
+
+        $this->redirectRoute('master-data.students.index', navigate: true);
+    }
+
     /**
-     * Sync the parent rows with the pivot: update kept rows, create new ones,
-     * and detach removed ones. Detached parents without an account and no
-     * other children are deleted so master data stays clean; shared parents
-     * (siblings) are preserved.
+     * Sync the parent rows: existing selections are attached as-is, new
+     * entries get a full account (User + ParentGuardian) created first.
+     * Detached parents without an account and no other children are
+     * cleaned up automatically.
      *
-     * @param  array<int, array{id: ?int, name: string, relationship: string, phone: ?string}>  $rows
+     * @param  array<int, array{parent_id: ?int, name: string, email: string, phone: string, relationship: string}>  $rows
      */
     protected function syncParents(array $rows): void
     {
         $kept = [];
 
         foreach ($rows as $row) {
-            $parent = filled($row['id'] ?? null)
-                ? ParentGuardian::query()->findOrFail($row['id'])
-                : new ParentGuardian;
+            if (filled($row['parent_id'] ?? null)) {
+                $parent = ParentGuardian::query()->findOrFail($row['parent_id']);
+            } else {
+                $parentUser = User::create([
+                    'name' => $row['name'],
+                    'email' => $row['email'],
+                    'password' => $this->generateParentPassword($row['phone']),
+                    'is_active' => true,
+                    'email_verified_at' => now(),
+                ]);
+                $parentUser->assignRole(UserRole::OrangTua->value);
 
-            $parent->fill(['name' => $row['name'], 'phone' => $row['phone'] ?? null])->save();
+                $parent = ParentGuardian::create([
+                    'user_id' => $parentUser->id,
+                    'name' => $row['name'],
+                    'phone' => $row['phone'],
+                ]);
+            }
 
             $kept[$parent->id] = ['relationship' => $row['relationship']];
         }
@@ -279,7 +375,7 @@ new #[Title('Edit Siswa')] class extends Component {
         <div class="mb-8 grid grid-cols-1 gap-8 md:grid-cols-2">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama') }} <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="name" placeholder="Muhamad Hafidz"
+                <input type="text" wire:model="name"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('name')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -288,7 +384,7 @@ new #[Title('Edit Siswa')] class extends Component {
 
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">NIS <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="nis" placeholder="0012345678"
+                <input type="text" wire:model="nis"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('nis')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -297,7 +393,7 @@ new #[Title('Edit Siswa')] class extends Component {
 
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">NISN</label>
-                <input type="text" wire:model="nisn" placeholder="0012345678"
+                <input type="text" wire:model="nisn"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('nisn')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -333,12 +429,9 @@ new #[Title('Edit Siswa')] class extends Component {
                 @enderror
             </div>
 
-           <div class="flex flex-col">
+            <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Tanggal Lahir') }}</label>
-                <input type="date" 
-                    wire:model="birth_date"
-                    min="{{ now()->subYears(20)->format('Y-m-d') }}"
-                    max="{{ now()->subYears(14)->format('Y-m-d') }}"
+                <input type="date" wire:model="birth_date"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('birth_date')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -386,7 +479,7 @@ new #[Title('Edit Siswa')] class extends Component {
 
             <div class="flex flex-col md:col-span-2">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Alamat') }}</label>
-                <textarea wire:model="address" rows="3" placeholder="{{ __('Alamat lengkap') }}"
+                <textarea wire:model="address" rows="3"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500"></textarea>
                 @error('address')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
@@ -394,11 +487,12 @@ new #[Title('Edit Siswa')] class extends Component {
             </div>
         </div>
 
+        {{-- ============ Data Orang Tua / Wali ============ --}}
         <div class="mb-8 flex flex-col gap-4">
             <div class="flex items-center justify-between gap-4">
                 <div class="flex flex-col">
                     <label class="font-semibold text-gray-600">{{ __('Data Orang Tua / Wali') }}</label>
-                    <span class="text-xs text-gray-500">{{ __('Orang tua yang terdaftar dapat dihubungkan dengan akun monitoring.') }}</span>
+                    <span class="text-xs text-gray-500">{{ __('Cari orang tua yang sudah terdaftar, atau buat akun baru.') }}</span>
                 </div>
                 <x-ui.button variant="secondary" icon="add-outline" wire:click="addParent">
                     {{ __('Tambah Orang Tua') }}
@@ -406,42 +500,133 @@ new #[Title('Edit Siswa')] class extends Component {
             </div>
 
             @forelse ($parents as $index => $row)
-                <div wire:key="parent-row-{{ $index }}" class="grid grid-cols-1 gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 md:grid-cols-[1fr_170px_200px_auto] md:items-start">
-                    <div class="flex flex-col">
-                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Nama Orang Tua') }} <span class="text-red-500">*</span></label>
-                        <input type="text" wire:model="parents.{{ $index }}.name" placeholder="{{ __('Nama lengkap') }}"
-                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                        @error('parents.'.$index.'.name')
-                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                        @enderror
-                    </div>
+                <div wire:key="parent-row-{{ $index }}" class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                    @if ($row['parent_id'])
+                        {{-- Mode: sudah dipilih --}}
+                        <div class="flex flex-col gap-4 md:flex-row md:items-start">
+                            <div class="flex flex-1 items-center gap-3 rounded-md border border-primary-200 bg-primary-50 px-3 py-2.5">
+                                <ion-icon name="checkmark-circle" class="text-lg text-primary-600"></ion-icon>
+                                <div class="flex flex-col text-sm">
+                                    <span class="font-semibold text-gray-800">{{ $row['name'] }}</span>
+                                    <span class="text-xs text-gray-500">{{ $row['email'] }} &middot; {{ $row['phone'] ?: '—' }}</span>
+                                </div>
+                                <button type="button" wire:click="clearParentSelection({{ $index }})" class="ml-auto text-xs font-medium text-primary-600 hover:underline">
+                                    {{ __('Ganti') }}
+                                </button>
+                            </div>
 
-                    <div class="flex flex-col">
-                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Hubungan') }} <span class="text-red-500">*</span></label>
-                        <select wire:model="parents.{{ $index }}.relationship"
-                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                            @foreach (self::relationshipOptions() as $relationship)
-                                <option value="{{ $relationship }}">{{ $relationship }}</option>
-                            @endforeach
-                        </select>
-                        @error('parents.'.$index.'.relationship')
-                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                        @enderror
-                    </div>
+                            <div class="flex flex-col md:w-[170px]">
+                                <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Hubungan') }} <span class="text-red-500">*</span></label>
+                                <select wire:model="parents.{{ $index }}.relationship"
+                                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    @foreach (self::relationshipOptions() as $relationship)
+                                        <option value="{{ $relationship }}">{{ $relationship }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
 
-                    <div class="flex flex-col">
-                        <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('No. HP') }}</label>
-                        <input type="text" wire:model="parents.{{ $index }}.phone" placeholder="08xxxxxxxxxx" inputmode="numeric"
-                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                        @error('parents.'.$index.'.phone')
-                            <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                        @enderror
-                    </div>
+                            <button type="button" wire:click="removeParent({{ $index }})" title="{{ __('Hapus') }}"
+                                class="mt-6 inline-flex items-center justify-center rounded-md p-2 text-red-500 transition hover:bg-red-50">
+                                <ion-icon name="trash-outline" class="text-xl"></ion-icon>
+                            </button>
+                        </div>
+                    @elseif (! $row['creatingNew'])
+                        {{-- Mode: cari orang tua --}}
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="relative flex-1">
+                                    <input type="text" wire:model.live.debounce.300ms="parents.{{ $index }}.search"
+                                        placeholder="{{ __('Cari nama, email, atau telepon orang tua...') }}"
+                                        class="w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <ion-icon name="search-outline" class="text-gray-400"></ion-icon>
+                                    </div>
+                                </div>
+                                <x-ui.button variant="secondary" icon="person-add-outline" wire:click="showCreateNewParent({{ $index }})">
+                                    {{ __('Buat Baru') }}
+                                </x-ui.button>
+                                <button type="button" wire:click="removeParent({{ $index }})" title="{{ __('Hapus') }}"
+                                    class="inline-flex items-center justify-center rounded-md p-2 text-red-500 transition hover:bg-red-50">
+                                    <ion-icon name="trash-outline" class="text-xl"></ion-icon>
+                                </button>
+                            </div>
 
-                    <button type="button" wire:click="removeParent({{ $index }})" title="{{ __('Hapus') }}"
-                        class="mt-6 inline-flex items-center justify-center rounded-md p-2 text-red-500 transition hover:bg-red-50">
-                        <span wire:ignore class="inline-flex"><ion-icon name="trash-outline" class="text-xl"></ion-icon></span>
-                    </button>
+                            @if (trim($row['search']) !== '')
+                                <div class="flex flex-col gap-1.5 rounded-md border border-gray-200 bg-white p-2">
+                                    @forelse ($this->parentSearchResults($index) as $result)
+                                        <button type="button" wire:key="result-{{ $index }}-{{ $result->id }}"
+                                            wire:click="selectParent({{ $index }}, {{ $result->id }})"
+                                            class="flex flex-col rounded-md px-3 py-2 text-left text-sm transition hover:bg-primary-50">
+                                            <span class="font-medium text-gray-800">{{ $result->name }}</span>
+                                            <span class="text-xs text-gray-500">{{ $result->user?->email ?? '—' }} &middot; {{ $result->phone ?? '—' }}</span>
+                                        </button>
+                                    @empty
+                                        <p class="px-3 py-2 text-sm text-gray-400">{{ __('Tidak ditemukan. Klik "Buat Baru" untuk mendaftarkan.') }}</p>
+                                    @endforelse
+                                </div>
+                            @endif
+
+                            <div class="flex flex-col md:w-[170px]">
+                                <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Hubungan') }} <span class="text-red-500">*</span></label>
+                                <select wire:model="parents.{{ $index }}.relationship"
+                                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    @foreach (self::relationshipOptions() as $relationship)
+                                        <option value="{{ $relationship }}">{{ $relationship }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                    @else
+                        {{-- Mode: buat baru --}}
+                        <div class="flex flex-col gap-4">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-semibold text-gray-700">{{ __('Buat Akun Orang Tua Baru') }}</span>
+                                <button type="button" wire:click="cancelCreateNewParent({{ $index }})" class="text-xs font-medium text-gray-500 hover:underline">
+                                    {{ __('Batal, cari lagi') }}
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div class="flex flex-col">
+                                    <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Nama Orang Tua') }} <span class="text-red-500">*</span></label>
+                                    <input type="text" wire:model="parents.{{ $index }}.name" placeholder="{{ __('Nama lengkap') }}"
+                                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    @error('parents.'.$index.'.name')
+                                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <div class="flex flex-col">
+                                    <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Email') }} <span class="text-red-500">*</span></label>
+                                    <input type="email" wire:model="parents.{{ $index }}.email" placeholder="ortu@email.com"
+                                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    @error('parents.'.$index.'.email')
+                                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <div class="flex flex-col">
+                                    <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('No. HP') }} <span class="text-red-500">*</span></label>
+                                    <input type="text" wire:model="parents.{{ $index }}.phone" placeholder="08xxxxxxxxxx" inputmode="numeric"
+                                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                    <span class="mt-1 text-xs text-gray-400">{{ __('Dipakai sebagai bagian dari password default akun.') }}</span>
+                                    @error('parents.'.$index.'.phone')
+                                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
+
+                                <div class="flex flex-col">
+                                    <label class="mb-1 text-xs font-semibold text-gray-600">{{ __('Hubungan') }} <span class="text-red-500">*</span></label>
+                                    <select wire:model="parents.{{ $index }}.relationship"
+                                        class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                        @foreach (self::relationshipOptions() as $relationship)
+                                            <option value="{{ $relationship }}">{{ $relationship }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
                 </div>
             @empty
                 <p class="rounded-lg border border-dashed border-gray-200 p-4 text-sm text-gray-500">
@@ -454,7 +639,7 @@ new #[Title('Edit Siswa')] class extends Component {
             <x-ui.button variant="secondary" :href="route('master-data.students.index')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
-            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
+            <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

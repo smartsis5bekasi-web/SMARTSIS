@@ -154,7 +154,7 @@ new #[Title('Edit Aturan Poin')] class extends Component {
             <x-ui.button variant="secondary" :href="route('attendance.points')" wire:navigate>
                 {{ __('Batal') }}
             </x-ui.button>
-            <x-ui.button variant="primary" type="submit">{{ __('Simpan') }}</x-ui.button>
+            <x-ui.button variant="primary" type="submit" class="cursor-pointer">{{ __('Simpan') }}</x-ui.button>
         </div>
     </form>
 </div>

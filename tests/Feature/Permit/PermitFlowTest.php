@@ -237,3 +237,79 @@ test('roles with view access can open the permit index', function (UserRole $rol
     'wali kelas' => [UserRole::WaliKelas],
     'guru piket' => [UserRole::GuruPiket],
 ]);
+
+test('guru piket can record a walk-in permit manually and it lands approved', function () {
+    $student = Student::factory()->create();
+    $piket = userWithRole(UserRole::GuruPiket);
+
+    $this->actingAs($piket);
+
+    Livewire::test('pages::permit.manual')
+        ->set('student_id', $student->id)
+        ->set('type', PermitType::Keluar->value)
+        ->set('date', now()->toDateString())
+        ->set('reason', 'Dijemput orang tua untuk kontrol ke dokter.')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertRedirect(route('permits.index'));
+
+    $permit = $student->permits()->sole();
+
+    expect($permit->type)->toBe(PermitType::Keluar)
+        ->and($permit->status)->toBe(PermitStatus::Approved)
+        ->and($permit->decided_by)->toBe($piket->id)
+        ->and($permit->decided_at)->not->toBeNull()
+        ->and($permit->decision_note)->toContain($piket->name);
+});
+
+test('a manual permit may be backdated and keeps a custom approval note', function () {
+    $student = Student::factory()->create();
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::permit.manual')
+        ->set('student_id', $student->id)
+        ->set('type', PermitType::Terlambat->value)
+        ->set('date', now()->subDays(2)->toDateString())
+        ->set('reason', 'Ban motor bocor, sudah dikonfirmasi wali kelas.')
+        ->set('note', 'Sudah dikonfirmasi wali kelas.')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($student->permits()->sole())
+        ->date->toDateString()->toBe(now()->subDays(2)->toDateString())
+        ->decision_note->toBe('Sudah dikonfirmasi wali kelas.');
+});
+
+test('a manual permit cannot duplicate a live request of the same type and date', function () {
+    $student = Student::factory()->create();
+    Permit::factory()->for($student)->ofType(PermitType::Terlambat)->create(['date' => now()->toDateString()]);
+
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    Livewire::test('pages::permit.manual')
+        ->set('student_id', $student->id)
+        ->set('type', PermitType::Terlambat->value)
+        ->set('date', now()->toDateString())
+        ->set('reason', 'Terlambat karena macet.')
+        ->call('save')
+        ->assertHasErrors('type');
+
+    expect($student->permits()->count())->toBe(1);
+});
+
+test('roles without kelola perizinan cannot open the manual input page', function () {
+    [$user] = siswaWithStudent();
+
+    $this->actingAs($user)
+        ->get(route('permits.manual'))
+        ->assertForbidden();
+
+    $this->actingAs(userWithRole(UserRole::WaliKelas))
+        ->get(route('permits.manual'))
+        ->assertForbidden();
+
+    $this->actingAs(userWithRole(UserRole::GuruPiket))
+        ->get(route('permits.manual'))
+        ->assertOk();
+});

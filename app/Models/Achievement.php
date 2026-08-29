@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Actions\Point\ApplyPointAdjustment;
+use App\Enums\Permission;
 use App\Enums\PointApprovalStatus;
+use App\Enums\UserRole;
 use App\Events\AchievementVerified;
 use Database\Factories\AchievementFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -51,6 +53,33 @@ class Achievement extends Model
     public function isPending(): bool
     {
         return $this->status === PointApprovalStatus::Pending;
+    }
+
+    /**
+     * Whether the user may edit the record.
+     *
+     * Only pending records qualify: approving one writes a point log, so a
+     * later change to its rule would leave the ledger out of sync. A student
+     * is always confined to their own submission, whichever grant they hold.
+     */
+    public function isEditableBy(User $user): bool
+    {
+        if (! $this->isPending()) {
+            return false;
+        }
+
+        if ($user->primaryRole() === UserRole::Siswa) {
+            return $user->student?->id === $this->student_id
+                && $user->canAny([
+                    Permission::RequestAchievement->value,
+                    Permission::EditAchievement->value,
+                ]);
+        }
+
+        return $user->canAny([
+            Permission::EditAchievement->value,
+            Permission::ManageAchievement->value,
+        ]);
     }
 
     /**

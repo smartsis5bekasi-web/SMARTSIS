@@ -35,6 +35,7 @@ enum Permission: string
     // Achievements.
     case ViewAchievement = 'achievement.view';
     case RequestAchievement = 'achievement.request';
+    case EditAchievement = 'achievement.edit';
     case ManageAchievement = 'achievement.manage';
 
     // Permission requests (perizinan).
@@ -66,6 +67,7 @@ enum Permission: string
             self::ManagePoint => 'Kelola Poin',
             self::ViewAchievement => 'Lihat Prestasi',
             self::RequestAchievement => 'Ajukan Prestasi',
+            self::EditAchievement => 'Ubah Prestasi',
             self::ManageAchievement => 'Kelola Prestasi',
             self::ViewPermit => 'Lihat Perizinan',
             self::RequestPermit => 'Ajukan Perizinan',
@@ -94,6 +96,7 @@ enum Permission: string
             self::ManagePoint => 'Aturan poin, penyesuaian manual, dan pengaturan poin.',
             self::ViewAchievement => 'Membuka daftar dan detail prestasi.',
             self::RequestAchievement => 'Mengajukan prestasi untuk diverifikasi.',
+            self::EditAchievement => 'Mengubah prestasi yang masih menunggu verifikasi, tanpa hak verifikasi.',
             self::ManageAchievement => 'Menyetujui, menolak, dan mengubah prestasi.',
             self::ViewPermit => 'Membuka daftar dan detail perizinan.',
             self::RequestPermit => 'Mengajukan izin baru.',
@@ -115,7 +118,7 @@ enum Permission: string
             self::ViewAttendance, self::ManageAttendance => 'Kehadiran',
             self::ViewViolation, self::InputViolation, self::ManageViolation => 'Pelanggaran',
             self::ViewPoint, self::ManagePoint => 'Poin Disiplin',
-            self::ViewAchievement, self::RequestAchievement, self::ManageAchievement => 'Prestasi',
+            self::ViewAchievement, self::RequestAchievement, self::EditAchievement, self::ManageAchievement => 'Prestasi',
             self::ViewPermit, self::RequestPermit, self::ManagePermit => 'Perizinan',
             self::ViewWarning, self::ManageWarning => 'Surat Peringatan',
         };

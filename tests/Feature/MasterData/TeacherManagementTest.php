@@ -7,6 +7,8 @@ use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -244,4 +246,51 @@ test('deleting a guru removes the teacher and its login, nulling any homeroom', 
     $this->assertDatabaseMissing('teachers', ['id' => $teacher->id]);
     $this->assertDatabaseMissing('users', ['id' => $user->id]);
     $this->assertDatabaseHas('classrooms', ['id' => $classroom->id, 'homeroom_teacher_id' => null]);
+});
+
+test('the guru list shows the newest entries first', function () {
+    $older = Teacher::factory()->create(['name' => 'Zulkifli Lama', 'created_at' => now()->subDay()]);
+    $newer = Teacher::factory()->create(['name' => 'Andi Baru', 'created_at' => now()]);
+
+    Livewire::test('pages::master-data.teachers')
+        ->assertSeeInOrder([$newer->name, $older->name]);
+});
+
+test('editing a guru can upload a photo and replaces the previous file', function () {
+    Storage::fake('public');
+    $user = User::factory()->create();
+    $user->assignRole(UserRole::GuruMapel->value);
+    $teacher = Teacher::factory()->create(['user_id' => $user->id]);
+
+    Livewire::test('pages::master-data.teachers.edit', ['teacher' => $teacher])
+        ->set('avatar', UploadedFile::fake()->image('pertama.jpg'))
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $firstPath = Str::after($teacher->refresh()->avatar_url, '/storage/');
+    Storage::disk('public')->assertExists($firstPath);
+
+    Livewire::test('pages::master-data.teachers.edit', ['teacher' => $teacher])
+        ->set('avatar', UploadedFile::fake()->image('kedua.jpg'))
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Storage::disk('public')->assertMissing($firstPath);
+    Storage::disk('public')->assertExists(Str::after($teacher->refresh()->avatar_url, '/storage/'));
+});
+
+test('editing a guru without uploading keeps the existing photo', function () {
+    Storage::fake('public');
+    $user = User::factory()->create();
+    $user->assignRole(UserRole::GuruMapel->value);
+    $teacher = Teacher::factory()->create(['user_id' => $user->id, 'avatar_url' => '/storage/teachers/lama.jpg']);
+
+    Livewire::test('pages::master-data.teachers.edit', ['teacher' => $teacher])
+        ->set('name', 'Nama Baru')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($teacher->refresh())
+        ->name->toBe('Nama Baru')
+        ->avatar_url->toBe('/storage/teachers/lama.jpg');
 });

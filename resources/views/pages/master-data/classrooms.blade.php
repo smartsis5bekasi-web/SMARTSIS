@@ -71,7 +71,8 @@ new #[Title('Kelas')] class extends Component {
             ->when(filled($this->search), fn (Builder $query) => $query->where('name', 'like', '%'.trim($this->search).'%'))
             ->when($this->majorId !== '', fn (Builder $query) => $query->where('major_id', $this->majorId))
             ->when($this->homeroomTeacherId !== '', fn (Builder $query) => $query->where('homeroom_teacher_id', $this->homeroomTeacherId))
-            ->orderBy('name')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(10);
     }
 
