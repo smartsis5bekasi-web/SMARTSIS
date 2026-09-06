@@ -37,6 +37,25 @@ enum AttendanceStatus: string
     }
 
     /**
+     * Whether a student may declare this status for themselves from the
+     * absensi page (the Sakit / Izin shortcuts), which always requires proof.
+     */
+    public function isSelfDeclarable(): bool
+    {
+        return in_array($this, [self::Izin, self::Sakit], true);
+    }
+
+    /**
+     * The statuses a student may declare for themselves.
+     *
+     * @return array<int, self>
+     */
+    public static function selfDeclarable(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $status): bool => $status->isSelfDeclarable()));
+    }
+
+    /**
      * All status backed values.
      *
      * @return array<int, string>

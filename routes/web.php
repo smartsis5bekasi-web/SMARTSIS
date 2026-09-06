@@ -68,6 +68,9 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('absensi', 'pages::attendance.absensi.index')
                 ->middleware('permission:'.Permission::ViewAttendance->value)
                 ->name('absensi');
+            Route::livewire('absensi/riwayat', 'pages::attendance.absensi.history')
+                ->middleware('permission:'.Permission::ViewAttendance->value)
+                ->name('absensi.history');
             Route::livewire('absensi/rekap', 'pages::attendance.absensi.recap')
                 ->middleware('permission:'.Permission::ViewAttendance->value)
                 ->name('absensi.recap');

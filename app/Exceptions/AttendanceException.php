@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Enums\AttendanceStatus;
 use App\Models\Attendance;
 use RuntimeException;
 
@@ -31,6 +32,11 @@ class AttendanceException extends RuntimeException
     public static function checkInNotOpen(string $opensAt): self
     {
         return new self(__('Absensi masuk baru dibuka pukul :time.', ['time' => $opensAt]));
+    }
+
+    public static function notSelfDeclarable(AttendanceStatus $status): self
+    {
+        return new self(__('Status :status tidak dapat diajukan sendiri.', ['status' => $status->label()]));
     }
 
     public static function checkOutNotOpen(string $opensAt): self

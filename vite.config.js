@@ -14,6 +14,7 @@ export default defineConfig({
                 'resources/js/passkeys.js',
                 'resources/js/face-onboarding.js',
                 'resources/js/face-attendance.js',
+                'resources/js/attendance-camera.js',
             ],
             refresh: true,
             fonts: [

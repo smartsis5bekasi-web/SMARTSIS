@@ -87,8 +87,8 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
     /**
      * Step 2 — persist the face template captured in the browser.
-     * Expects 3 samples of 128-dimension descriptors from face-api, plus a
-     * JPEG snapshot of the first sample that becomes the profile photo.
+     * Expects one to three samples of 128-dimension descriptors from face-api,
+     * plus a JPEG snapshot of the first sample that becomes the profile photo.
      *
      * @param  array<int, array<int, float|int>>  $descriptors
      */
@@ -97,7 +97,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         $student = auth()->user()->student;
         abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
-        $isValid = count($descriptors) === 3 && collect($descriptors)->every(
+        $isValid = count($descriptors) >= 1 && count($descriptors) <= 3 && collect($descriptors)->every(
             fn ($sample): bool => is_array($sample)
                 && count($sample) === 128
                 && collect($sample)->every(fn ($value): bool => is_numeric($value)),
@@ -153,12 +153,26 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     }
 
     /**
+     * Move on without a face template. Daily absensi does not match faces, so
+     * a student whose camera or lighting fails is not locked out of the app —
+     * they can register later from their profile, and until then the staffed
+     * kiosk simply will not find them.
+     */
+    public function skipFaceRegistration(): void
+    {
+        $student = auth()->user()->student;
+        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
+
+        $this->step = 3;
+    }
+
+    /**
      * Step 3 — student confirms their identity; onboarding is complete.
      */
     public function completeOnboarding(): void
     {
         $student = auth()->user()->student;
-        abort_unless($student !== null && $student->hasRegisteredFace(), 403);
+        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
         $student->update(['onboarded_at' => now()]);
 
@@ -176,7 +190,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     {
         return [
             1 => ['title' => __('Verifikasi NISN'), 'subtitle' => __('Cocokkan NISN dengan data sekolah')],
-            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => __('Rekam wajah untuk absensi')],
+            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => __('Opsional, untuk kiosk absensi petugas')],
             3 => ['title' => __('Konfirmasi Data'), 'subtitle' => __('Periksa data dan selesaikan')],
         ];
     }
@@ -215,7 +229,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
             <form method="POST" action="{{ route('logout') }}" class="mt-auto">
                 @csrf
-                <button type="submit" class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-700">
+                <button type="submit" class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-700 cursor-pointer">
                     <ion-icon name="log-out-outline" class="text-lg"></ion-icon>
                     {{ __('Keluar') }}
                 </button>
@@ -274,16 +288,19 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
                     <div data-face-progress class="mt-2 flex items-center justify-center gap-2">
                         <span data-dot class="h-2.5 w-2.5 rounded-full bg-gray-200 transition"></span>
-                        <span data-dot class="h-2.5 w-2.5 rounded-full bg-gray-200 transition"></span>
-                        <span data-dot class="h-2.5 w-2.5 rounded-full bg-gray-200 transition"></span>
                     </div>
 
                     <x-ui.button variant="primary" icon="camera-outline" class="mt-8 w-full" data-face-capture disabled>
-                        {{ __('Ambil Sampel Wajah') }}
+                        {{ __('Ambil Foto Wajah') }}
                     </x-ui.button>
 
+                    <button type="button" wire:click="skipFaceRegistration"
+                        class="mt-3 w-full rounded-md px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700">
+                        {{ __('Lewati dulu, daftarkan wajah nanti') }}
+                    </button>
+
                     <p class="mt-3 text-center text-xs text-gray-500">
-                        {{ __('Ambil 3 sampel wajah. Data ini menjadi pembanding saat Anda melakukan absensi.') }}
+                        {{ __('Cukup satu foto. Absensi harian Anda tidak mencocokkan wajah — foto ini hanya dipakai kiosk absensi petugas.') }}
                     </p>
                 </div>
             @elseif ($step === 3)
@@ -296,10 +313,17 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                                 alt="{{ $student?->name }}" />
                             <div class="flex flex-col">
                                 <span class="text-lg font-bold text-gray-800">{{ $student?->name }}</span>
-                                <span class="inline-flex items-center gap-1 text-sm text-green-600">
-                                    <ion-icon name="shield-checkmark-outline"></ion-icon>
-                                    {{ __('Wajah terdaftar') }}
-                                </span>
+                                @if ($student?->hasRegisteredFace())
+                                    <span class="inline-flex items-center gap-1 text-sm text-green-600">
+                                        <ion-icon name="shield-checkmark-outline"></ion-icon>
+                                        {{ __('Wajah terdaftar') }}
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center gap-1 text-sm text-amber-600">
+                                        <ion-icon name="alert-circle-outline"></ion-icon>
+                                        {{ __('Wajah belum terdaftar') }}
+                                    </span>
+                                @endif
                             </div>
                         </div>
 

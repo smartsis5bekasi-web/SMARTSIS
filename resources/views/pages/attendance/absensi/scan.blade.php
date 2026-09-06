@@ -4,7 +4,9 @@ use App\Actions\Attendance\RecordAttendance;
 use App\Enums\Permission;
 use App\Exceptions\AttendanceException;
 use App\Models\AttendanceSetting;
+use App\Actions\Attendance\StoreAttendanceSelfie;
 use App\Models\Student;
+use App\Support\AttendanceCapture;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -54,18 +56,30 @@ new #[Title('Scan Absensi')] class extends Component {
      * Record the matched student's attendance after the blink challenge.
      * Check-out for a student who has not checked in is rejected by the
      * engine ({@see RecordAttendance::checkOut}) and surfaces as an error
-     * card.
+     * card. The kiosk keeps the matched frame as evidence; the location is
+     * the school itself, so no GPS fix is collected here.
+     *
+     * @param  array{photo?: string|null}  $capture
      */
-    public function record(int $studentId): void
+    public function record(int $studentId, array $capture = []): void
     {
         $student = Student::query()->with('classroom')->findOrFail($studentId);
         $recorder = auth()->user();
         $engine = app(RecordAttendance::class);
+        $checkingOut = $this->mode === 'pulang';
+
+        $evidence = new AttendanceCapture(
+            photoPath: app(StoreAttendanceSelfie::class)->handle(
+                $capture['photo'] ?? null,
+                $student,
+                $checkingOut ? 'out' : 'in',
+            ),
+        );
 
         try {
-            $attendance = $this->mode === 'pulang'
-                ? $engine->checkOut($student, $recorder)
-                : $engine->checkIn($student, $recorder);
+            $attendance = $checkingOut
+                ? $engine->checkOut($student, $recorder, $evidence)
+                : $engine->checkIn($student, $recorder, 'face', $evidence);
 
             $this->lastResult = [
                 'ok' => true,
@@ -74,7 +88,7 @@ new #[Title('Scan Absensi')] class extends Component {
                 'avatar' => $student->avatar_url,
                 'status' => $attendance->status->label(),
                 'time' => now()->format('H:i'),
-                'message' => $this->mode === 'pulang'
+                'message' => $checkingOut
                     ? __('Absensi pulang tercatat.')
                     : __('Absensi masuk tercatat: :status.', ['status' => $attendance->status->label()]),
             ];

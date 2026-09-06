@@ -5,11 +5,11 @@
 // Blink Detection via Eye Aspect Ratio on the 68-point landmarks) → hand the
 // matched student id to the Livewire page, which records check-in/check-out.
 //
-// The staffed kiosk (pages::attendance.absensi.scan) and the siswa's own
-// Absensi page (pages::attendance.absensi.index) call
-// window.SmartsisAttendance.start($el, $wire, { templatesUrl }) from Alpine
-// x-init; the endpoint decides which templates that user is allowed to match
-// against (everyone for the kiosk, themselves for a siswa).
+// Only the staffed kiosk (pages::attendance.absensi.scan) uses this, because
+// it is the one screen that has to work out *who* is standing in front of the
+// camera (1:N). A siswa on their own Absensi page is already identified by
+// their session, so that page uses the dependency-free attendance-camera.js
+// instead and starts in a fraction of the time.
 
 import * as faceapi from '@vladmandic/face-api';
 
@@ -115,6 +115,37 @@ function stopKiosk() {
     }
 }
 
+// Evidence photos are downscaled to this width before upload.
+const PHOTO_WIDTH = 640;
+const PHOTO_QUALITY = 0.72;
+
+/**
+ * Grab the current video frame as a downscaled JPEG data URL, un-mirrored so
+ * the stored evidence photo reads the way a human expects.
+ *
+ * @param {HTMLVideoElement} video
+ * @returns {string|null}
+ */
+function grabFrame(video) {
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+
+    if (!width || !height) {
+        return null;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = PHOTO_WIDTH;
+    canvas.height = Math.round((height / width) * PHOTO_WIDTH);
+
+    const context = canvas.getContext('2d');
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL('image/jpeg', PHOTO_QUALITY);
+}
+
 function distance(a, b) {
     return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -139,7 +170,7 @@ window.SmartsisAttendance = {
      *   video[data-face-video], [data-face-status].
      *
      * @param {HTMLElement} container
-     * @param {{ record: (studentId: number) => Promise<void> }} wire  Livewire $wire proxy.
+     * @param {{ record: (studentId: number, capture: object) => Promise<void> }} wire  Livewire $wire proxy.
      * @param {{ templatesUrl: string }} options
      */
     async start(container, wire, options) {
@@ -304,7 +335,7 @@ window.SmartsisAttendance = {
                         resetScan();
 
                         setStatus(`Mencatat absensi ${name}…`, 'success');
-                        await wire.record(studentId);
+                        await wire.record(studentId, { photo: grabFrame(video) });
                         setStatus('Tercatat. Silakan siswa berikutnya.', 'success');
 
                         loopId = setTimeout(tick, COOLDOWN_MS);

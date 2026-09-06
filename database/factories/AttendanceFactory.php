@@ -27,7 +27,41 @@ class AttendanceFactory extends Factory
             'method' => 'face',
             'recorded_by' => null,
             'note' => null,
+            'attachment_path' => null,
+            'reason' => null,
+            // A camera scan is its own proof; self-declared statuses override
+            // this in their own states.
+            'verified_at' => now(),
+            'verified_by' => null,
         ];
+    }
+
+    /**
+     * A record carrying the evidence the self-service camera collects: the
+     * selfie frame and the GPS fix.
+     */
+    public function captured(): static
+    {
+        return $this->state(fn (): array => [
+            'method' => 'self',
+            'check_in_photo_path' => '/storage/attendances/sample-in.jpg',
+            'check_in_latitude' => -6.2607330,
+            'check_in_longitude' => 106.7810400,
+            'check_in_accuracy' => 12,
+        ]);
+    }
+
+    /**
+     * A self-declared sakit/izin still awaiting a Guru Piket's confirmation.
+     */
+    public function unverified(): static
+    {
+        return $this->state(fn (): array => [
+            'method' => 'self',
+            'attachment_path' => '/storage/attendances/proofs/surat.jpg',
+            'verified_at' => null,
+            'verified_by' => null,
+        ]);
     }
 
     public function late(): static

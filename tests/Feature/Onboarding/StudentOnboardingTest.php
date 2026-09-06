@@ -229,10 +229,42 @@ test('malformed face descriptors are rejected', function (array $descriptors) {
 
     expect($student->fresh()->hasRegisteredFace())->toBeFalse();
 })->with([
-    'too few samples' => [[array_fill(0, 128, 0.5)]],
+    'no samples' => [[]],
+    'too many samples' => [array_fill(0, 4, array_fill(0, 128, 0.5))],
     'wrong dimension' => [array_fill(0, 3, array_fill(0, 64, 0.5))],
     'non numeric values' => [array_fill(0, 3, array_fill(0, 128, 'x'))],
 ]);
+
+test('a single face sample is enough to register', function () {
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', [array_map(fn (int $i): float => $i / 128, range(1, 128))])
+        ->assertSet('step', 3);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeTrue()
+        ->and($student->fresh()->face_descriptors)->toHaveCount(1);
+});
+
+test('the face step can be skipped and onboarding still completes', function () {
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->call('skipFaceRegistration')
+        ->assertSet('step', 3)
+        ->call('completeOnboarding')
+        ->assertRedirect(route('dashboard'));
+
+    expect($student->fresh()->onboarded_at)->not->toBeNull()
+        ->and($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
 
 test('completing onboarding stamps the student and redirects to the dashboard', function () {
     $user = userWithRole(UserRole::Siswa);
@@ -252,7 +284,7 @@ test('completing onboarding stamps the student and redirects to the dashboard', 
     expect($student->fresh()->onboarded_at)->not->toBeNull();
 });
 
-test('onboarding cannot be completed before the face is registered', function () {
+test('onboarding cannot be completed before the nisn is verified', function () {
     $user = userWithRole(UserRole::Siswa);
     Student::factory()->create(['user_id' => $user->id]);
 

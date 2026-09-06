@@ -12,13 +12,12 @@
 import * as faceapi from '@vladmandic/face-api';
 
 const MODEL_URL = '/models/face-api';
-const SAMPLES_NEEDED = 3;
 
-// Two descriptors of the same person are expected to sit well below this
-// euclidean distance (face-api convention: 0.5–0.6 is the match boundary).
-// Samples further apart than this are rejected so one registration cannot
-// mix two different faces.
-const SAMPLE_CONSISTENCY_THRESHOLD = 0.45;
+// One sample is enough. Absensi itself no longer matches faces — the student
+// is identified by their session and verified by their GPS fix — so this
+// template only feeds the staffed kiosk's 1:N lookup, and a three-sample
+// ritual is friction the student pays for nothing.
+const SAMPLES_NEEDED = 1;
 
 const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
     inputSize: 320,
@@ -65,28 +64,13 @@ function captureSnapshot(video, maxWidth = 480) {
     return canvas.toDataURL('image/jpeg', 0.85);
 }
 
-/**
- * Euclidean distance between two 128-d descriptors (also used by the
- * attendance matcher later on).
- */
-function descriptorDistance(a, b) {
-    let sum = 0;
-
-    for (let i = 0; i < a.length; i++) {
-        const diff = a[i] - b[i];
-        sum += diff * diff;
-    }
-
-    return Math.sqrt(sum);
-}
-
 window.SmartsisFace = {
     /**
      * Boot the face-registration UI inside the given container.
      *
      * Expected elements inside `container`:
      *   video[data-face-video], [data-face-status], button[data-face-capture],
-     *   [data-face-progress] (dots showing captured samples).
+     *   [data-face-progress] (optional dots showing captured samples).
      *
      * @param {HTMLElement} container
      * @param {{ storeFaceDescriptors: (samples: number[][]) => Promise<void> }} wire  Livewire $wire proxy.
@@ -184,20 +168,12 @@ window.SmartsisFace = {
                     return;
                 }
 
-                const descriptor = Array.from(result.descriptor);
-
-                if (samples.length > 0 && descriptorDistance(samples[0], descriptor) > SAMPLE_CONSISTENCY_THRESHOLD) {
-                    setStatus('Sampel tidak konsisten dengan sebelumnya. Pastikan wajah yang sama, lalu coba lagi.', 'error');
-
-                    return;
-                }
-
-                samples.push(descriptor);
+                samples.push(Array.from(result.descriptor));
                 snapshot ??= captureSnapshot(video);
                 refreshUi();
 
                 if (samples.length < SAMPLES_NEEDED) {
-                    setStatus(`Sampel ${samples.length}/${SAMPLES_NEEDED} tersimpan. Ubah sedikit posisi kepala, lalu ambil lagi.`, 'success');
+                    setStatus(`Sampel ${samples.length}/${SAMPLES_NEEDED} tersimpan. Ambil satu lagi.`, 'success');
 
                     return;
                 }
@@ -216,7 +192,6 @@ window.SmartsisFace = {
     },
 
     stop: stopCamera,
-    descriptorDistance,
 };
 
 // Safety net: release the camera when navigating away (wire:navigate or full unload).

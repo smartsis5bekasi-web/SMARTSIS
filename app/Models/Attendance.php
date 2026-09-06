@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -21,9 +22,21 @@ use Illuminate\Support\Carbon;
  * @property int|null $point_rule_id
  * @property Carbon|null $checked_in_at
  * @property Carbon|null $checked_out_at
+ * @property string|null $check_in_photo_path
+ * @property float|null $check_in_latitude
+ * @property float|null $check_in_longitude
+ * @property int|null $check_in_accuracy
+ * @property string|null $check_out_photo_path
+ * @property float|null $check_out_latitude
+ * @property float|null $check_out_longitude
+ * @property int|null $check_out_accuracy
  * @property string $method
  * @property int|null $recorded_by
  * @property string|null $note
+ * @property string|null $attachment_path
+ * @property string|null $reason
+ * @property Carbon|null $verified_at
+ * @property int|null $verified_by
  */
 class Attendance extends Model
 {
@@ -37,9 +50,21 @@ class Attendance extends Model
         'point_rule_id',
         'checked_in_at',
         'checked_out_at',
+        'check_in_photo_path',
+        'check_in_latitude',
+        'check_in_longitude',
+        'check_in_accuracy',
+        'check_out_photo_path',
+        'check_out_latitude',
+        'check_out_longitude',
+        'check_out_accuracy',
         'method',
         'recorded_by',
         'note',
+        'attachment_path',
+        'reason',
+        'verified_at',
+        'verified_by',
     ];
 
     /**
@@ -48,6 +73,89 @@ class Attendance extends Model
     public function isCheckedOut(): bool
     {
         return $this->checked_out_at !== null;
+    }
+
+    /**
+     * Whether the record still needs an absensi pulang. Izin/sakit days end
+     * the moment they are recorded — only a physical presence checks out.
+     */
+    public function needsCheckOut(): bool
+    {
+        return $this->status->isPresent() && ! $this->isCheckedOut();
+    }
+
+    /**
+     * Whether a human (or the camera itself) has confirmed this record.
+     */
+    public function isVerified(): bool
+    {
+        return $this->verified_at !== null;
+    }
+
+    /**
+     * The GPS fix recorded for the given moment, or null when the browser
+     * never handed one over.
+     *
+     * @param  'in'|'out'  $moment
+     * @return array{latitude: float, longitude: float, accuracy: int|null}|null
+     */
+    public function location(string $moment): ?array
+    {
+        $latitude = $moment === 'out' ? $this->check_out_latitude : $this->check_in_latitude;
+        $longitude = $moment === 'out' ? $this->check_out_longitude : $this->check_in_longitude;
+
+        if ($latitude === null || $longitude === null) {
+            return null;
+        }
+
+        return [
+            'latitude' => $latitude,
+            'longitude' => $longitude,
+            'accuracy' => $moment === 'out' ? $this->check_out_accuracy : $this->check_in_accuracy,
+        ];
+    }
+
+    /**
+     * Whether any GPS fix at all was captured for this record.
+     */
+    public function hasLocation(): bool
+    {
+        return $this->location('in') !== null || $this->location('out') !== null;
+    }
+
+    /**
+     * The photo to represent this record in the riwayat table: the check-in
+     * selfie, falling back to the check-out one, then the sakit/izin proof.
+     */
+    public function evidencePhotoUrl(): ?string
+    {
+        return $this->check_in_photo_path
+            ?? $this->check_out_photo_path
+            ?? $this->imageAttachmentUrl();
+    }
+
+    /**
+     * The sakit/izin attachment, but only when it is an image (a PDF surat is
+     * linked instead of previewed).
+     */
+    public function imageAttachmentUrl(): ?string
+    {
+        if ($this->attachment_path === null) {
+            return null;
+        }
+
+        return Str::endsWith(Str::lower($this->attachment_path), '.pdf') ? null : $this->attachment_path;
+    }
+
+    /**
+     * Mark the record as confirmed by a member of staff.
+     */
+    public function markVerified(?User $by = null): void
+    {
+        $this->forceFill([
+            'verified_at' => now(),
+            'verified_by' => $by?->id,
+        ])->save();
     }
 
     /**
@@ -108,6 +216,16 @@ class Attendance extends Model
     }
 
     /**
+     * The staff member who confirmed a self-declared sakit/izin.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function verifier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    /**
      * The point log entries produced by this attendance record.
      *
      * @return MorphMany<PointLog, $this>
@@ -127,6 +245,13 @@ class Attendance extends Model
             'status' => AttendanceStatus::class,
             'checked_in_at' => 'datetime',
             'checked_out_at' => 'datetime',
+            'check_in_latitude' => 'float',
+            'check_in_longitude' => 'float',
+            'check_in_accuracy' => 'integer',
+            'check_out_latitude' => 'float',
+            'check_out_longitude' => 'float',
+            'check_out_accuracy' => 'integer',
+            'verified_at' => 'datetime',
         ];
     }
 }

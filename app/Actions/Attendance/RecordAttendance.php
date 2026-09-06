@@ -11,6 +11,7 @@ use App\Models\AttendanceSetting;
 use App\Models\Permit;
 use App\Models\Student;
 use App\Models\User;
+use App\Support\AttendanceCapture;
 use Carbon\CarbonInterface;
 
 /**
@@ -28,8 +29,12 @@ class RecordAttendance
      * @throws AttendanceException when the window has not opened yet, or
      *                             today's attendance is already recorded
      */
-    public function checkIn(Student $student, User $by, string $method = 'face'): Attendance
-    {
+    public function checkIn(
+        Student $student,
+        User $by,
+        string $method = 'face',
+        ?AttendanceCapture $capture = null,
+    ): Attendance {
         $now = now();
         $existing = $student->attendances()->onDate($now)->first();
 
@@ -54,6 +59,14 @@ class RecordAttendance
             $note = __('Izin terlambat disetujui — tanpa pengurangan poin.');
         }
 
+        $capture ??= new AttendanceCapture;
+
+        // Absensi no longer verifies a face — the location does. A staffed
+        // kiosk is verified by the operator standing there; a student's own
+        // scan is verified by the GPS fix it carries, and stays pending
+        // without one.
+        $verified = $method !== 'self' || $capture->hasFix();
+
         $attendance = $student->attendances()->create([
             'date' => $now->toDateString(),
             'status' => $status,
@@ -62,6 +75,9 @@ class RecordAttendance
             'method' => $method,
             'recorded_by' => $by->id,
             'note' => $note,
+            'verified_at' => $verified ? $now : null,
+            'verified_by' => $verified ? $by->id : null,
+            ...$capture->checkInAttributes(),
         ]);
 
         if ($rule !== null) {
@@ -76,9 +92,10 @@ class RecordAttendance
      *
      * @throws AttendanceException when there is nothing to check out from
      */
-    public function checkOut(Student $student, User $by): Attendance
+    public function checkOut(Student $student, User $by, ?AttendanceCapture $capture = null): Attendance
     {
         $now = now();
+        $capture ??= new AttendanceCapture;
         $attendance = $student->attendances()->onDate($now)->first();
 
         if ($attendance === null || ! $attendance->status->isPresent()) {
@@ -100,12 +117,93 @@ class RecordAttendance
             $attendance->update([
                 'checked_out_at' => $now,
                 'note' => trim(($attendance->note !== null ? $attendance->note.' · ' : '').__('Pulang awal (izin disetujui).')),
+                ...$capture->checkOutAttributes(),
+                ...$this->lateVerification($attendance, $capture, $by),
             ]);
 
             return $attendance;
         }
 
-        $attendance->update(['checked_out_at' => $now]);
+        $attendance->update([
+            'checked_out_at' => $now,
+            ...$capture->checkOutAttributes(),
+            ...$this->lateVerification($attendance, $capture, $by),
+        ]);
+
+        return $attendance;
+    }
+
+    /**
+     * A check-in that arrived without a location leaves the day pending; a
+     * check-out that does carry one settles it, so a single denied permission
+     * in the morning does not condemn the whole record.
+     *
+     * @return array{verified_at?: CarbonInterface, verified_by?: int}
+     */
+    private function lateVerification(Attendance $attendance, AttendanceCapture $capture, User $by): array
+    {
+        if ($attendance->isVerified() || ! $capture->hasFix()) {
+            return [];
+        }
+
+        return ['verified_at' => now(), 'verified_by' => $by->id];
+    }
+
+    /**
+     * Record a student's own Sakit / Izin declaration from the absensi page.
+     *
+     * These days never check out, so the record is complete the moment it is
+     * written; it stays unverified until a Guru Piket / Wali Kelas confirms
+     * the uploaded proof.
+     *
+     * @throws AttendanceException when today is already recorded, or the
+     *                             status is not one a student may declare
+     */
+    public function selfDeclare(
+        Student $student,
+        AttendanceStatus $status,
+        User $by,
+        string $attachmentPath,
+        ?string $reason = null,
+        ?AttendanceCapture $capture = null,
+    ): Attendance {
+        if (! $status->isSelfDeclarable()) {
+            throw AttendanceException::notSelfDeclarable($status);
+        }
+
+        $now = now();
+        $existing = $student->attendances()->onDate($now)->first();
+
+        if ($existing !== null) {
+            throw AttendanceException::alreadyRecorded($existing);
+        }
+
+        $capture ??= new AttendanceCapture;
+
+        return $student->attendances()->create([
+            'date' => $now->toDateString(),
+            'status' => $status,
+            'point_rule_id' => AttendanceSetting::current()->ruleFor($status)?->id,
+            'method' => 'self',
+            'recorded_by' => $by->id,
+            'attachment_path' => $attachmentPath,
+            'reason' => $reason,
+            'verified_at' => null,
+            'verified_by' => null,
+            'check_in_latitude' => $capture->latitude,
+            'check_in_longitude' => $capture->longitude,
+            'check_in_accuracy' => $capture->accuracy,
+        ]);
+    }
+
+    /**
+     * Confirm a self-declared sakit/izin after reviewing its attachment.
+     */
+    public function verify(Attendance $attendance, User $by): Attendance
+    {
+        if (! $attendance->isVerified()) {
+            $attendance->markVerified($by);
+        }
 
         return $attendance;
     }
@@ -148,6 +246,9 @@ class RecordAttendance
             'method' => 'manual',
             'recorded_by' => $by->id,
             'note' => $note,
+            // A staff decision is the verification.
+            'verified_at' => now(),
+            'verified_by' => $by->id,
         ])->save();
 
         if ($rule !== null) {

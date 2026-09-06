@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Permission;
 use App\Enums\PointApprovalStatus;
 use App\Enums\UserRole;
 use App\Models\Achievement;
@@ -186,4 +187,86 @@ test('a student can edit their own pending submission', function () {
         ->assertHasNoErrors();
 
     expect($achievement->fresh()->title)->toBe('Judul Diperbarui');
+});
+
+test('guru bk edits a verified achievement from a form prefilled with the stored data', function () {
+    $bk = userWithRole(UserRole::GuruBk);
+    $student = Student::factory()->create(['current_point' => 100]);
+    $rule = PointRule::factory()->addition()->create(['point' => 20]);
+    $achievement = Achievement::factory()->create([
+        'student_id' => $student->id,
+        'point_rule_id' => $rule->id,
+        'title' => 'Juara 2 Olimpiade',
+        'level' => 'Provinsi',
+        'description' => 'Deskripsi awal',
+        'achieved_on' => now()->subWeek()->toDateString(),
+    ]);
+    $achievement->approve($bk);
+
+    $this->actingAs($bk);
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement->fresh()])
+        ->assertSet('point_rule_id', $rule->id)
+        ->assertSet('title', 'Juara 2 Olimpiade')
+        ->assertSet('level', 'Provinsi')
+        ->assertSet('description', 'Deskripsi awal')
+        ->assertSet('achieved_on', $achievement->achieved_on->toDateString())
+        ->set('title', 'Juara 1 Olimpiade')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertRedirect(route('academic.achievements'));
+
+    expect($achievement->fresh()->title)->toBe('Juara 1 Olimpiade');
+});
+
+test('the edit action is offered on the list only to a role holding an edit grant', function () {
+    $student = Student::factory()->create();
+    $rule = PointRule::factory()->addition()->create();
+    $achievement = Achievement::factory()->create([
+        'student_id' => $student->id,
+        'point_rule_id' => $rule->id,
+        'status' => PointApprovalStatus::Approved,
+    ]);
+
+    $editUrl = route('academic.achievements.edit', $achievement);
+
+    $this->actingAs(userWithRole(UserRole::GuruBk));
+    Livewire::test('pages::academic.achievement.index')->assertSee($editUrl, escape: false);
+
+    $this->actingAs(userWithRole(UserRole::KepalaSekolah));
+    Livewire::test('pages::academic.achievement.index')->assertDontSee($editUrl, escape: false);
+});
+
+test('a role without an edit grant cannot open the edit page', function () {
+    $viewer = userWithRole(UserRole::KepalaSekolah);
+    $achievement = Achievement::factory()->create([
+        'student_id' => Student::factory()->create()->id,
+        'point_rule_id' => PointRule::factory()->addition()->create()->id,
+    ]);
+
+    $this->actingAs($viewer);
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement])
+        ->assertForbidden();
+});
+
+test('granting achievement.edit alone is enough to edit, so the matrix stays adjustable', function () {
+    $viewer = userWithRole(UserRole::KepalaSekolah);
+    $achievement = Achievement::factory()->create([
+        'student_id' => Student::factory()->create()->id,
+        'point_rule_id' => PointRule::factory()->addition()->create()->id,
+        'title' => 'Sebelum',
+    ]);
+
+    $viewer->givePermissionTo(Permission::EditAchievement->value);
+
+    $this->actingAs($viewer->fresh());
+
+    Livewire::test('pages::academic.achievement.edit', ['achievement' => $achievement])
+        ->assertSet('title', 'Sebelum')
+        ->set('title', 'Sesudah')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($achievement->fresh()->title)->toBe('Sesudah');
 });

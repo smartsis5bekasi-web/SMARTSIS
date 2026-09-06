@@ -63,10 +63,9 @@ test('a siswa self-scanning only ever sees and records their own face template',
     expect($templates)->toHaveCount(1)
         ->and($templates[0]['id'])->toBe($own->id);
 
-    // Even if the browser payload is tampered with to pass another
-    // student's id, the server pins the recorded student to the siswa's own
-    // linked record.
-    Livewire::test('pages::attendance.absensi.index')->call('record', $other->id);
+    // The page never takes a student id from the browser at all — the record
+    // is pinned to the siswa's own linked record.
+    Livewire::test('pages::attendance.absensi.index')->call('record', []);
 
     expect($own->attendances()->count())->toBe(1)
         ->and($other->attendances()->count())->toBe(0);
@@ -82,7 +81,7 @@ test('a siswa cannot record absensi pulang before absensi masuk', function () {
 
     // Before check-in the only available step is masuk — the first scan
     // records check-in, never check-out.
-    $component->call('record', $student->id);
+    $component->call('record', []);
 
     expect($component->get('lastResult')['ok'])->toBeTrue();
 
