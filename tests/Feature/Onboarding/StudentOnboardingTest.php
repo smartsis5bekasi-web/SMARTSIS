@@ -249,7 +249,7 @@ test('a single face sample is enough to register', function () {
         ->and($student->fresh()->face_descriptors)->toHaveCount(1);
 });
 
-test('the face step can be skipped and onboarding still completes', function () {
+test('onboarding cannot be completed without a registered face', function () {
     $user = userWithRole(UserRole::Siswa);
     $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
 
@@ -257,13 +257,36 @@ test('the face step can be skipped and onboarding still completes', function () 
 
     Livewire::test('pages::onboarding.index')
         ->assertSet('step', 2)
-        ->call('skipFaceRegistration')
+        ->assertDontSee('Lewati dulu')
+        ->call('completeOnboarding')
+        ->assertSet('step', 2)
+        ->assertNoRedirect();
+
+    expect($student->fresh()->onboarded_at)->toBeNull();
+});
+
+test('an onboarded siswa without a face template is sent back to register one', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'onboarded_at' => now(),
+        'face_descriptors' => null,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertRedirect(route('onboarding'));
+
+    $this->get(route('onboarding'))->assertOk();
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->call('storeFaceDescriptors', fakeFaceDescriptors())
         ->assertSet('step', 3)
         ->call('completeOnboarding')
         ->assertRedirect(route('dashboard'));
 
-    expect($student->fresh()->onboarded_at)->not->toBeNull()
-        ->and($student->fresh()->hasRegisteredFace())->toBeFalse();
+    $this->get(route('dashboard'))->assertOk();
 });
 
 test('completing onboarding stamps the student and redirects to the dashboard', function () {

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Route;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
-test('seeder creates the nine roles and every permission', function () {
+test('seeder creates every role and every permission', function () {
     $this->seed(RolePermissionSeeder::class);
 
     expect(Role::count())->toBe(count(UserRole::cases()))

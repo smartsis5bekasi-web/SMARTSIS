@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\UserRole;
+use App\Models\Classroom;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
 
@@ -31,6 +32,56 @@ test('the staffed kiosk receives every registered template', function () {
         ->and(collect($response->json())->pluck('id')->sort()->values()->all())
         ->toBe($registered->pluck('id')->sort()->values()->all())
         ->and($response->json('0'))->toHaveKeys(['id', 'name', 'descriptors']);
+});
+
+test('a kiosk narrows the templates to one class', function () {
+    [$scanned, $other] = Classroom::factory()->count(2)->create();
+    $members = Student::factory()->onboarded()->count(2)->create(['classroom_id' => $scanned->id]);
+    Student::factory()->onboarded()->create(['classroom_id' => $other->id]);
+
+    $response = $this->actingAs(userWithRole(UserRole::Kiosk))
+        ->getJson(route('attendance.absensi.face-templates', ['classroom' => $scanned->id]))
+        ->assertOk();
+
+    expect(collect($response->json())->pluck('id')->sort()->values()->all())
+        ->toBe($members->pluck('id')->sort()->values()->all());
+});
+
+test('a device kiosk account receives every registered template', function () {
+    Student::factory()->onboarded()->count(2)->create();
+
+    $this->actingAs(userWithRole(UserRole::Kiosk))
+        ->getJson(route('attendance.absensi.face-templates'))
+        ->assertOk()
+        ->assertJsonCount(2);
+});
+
+test('switching class changes the cache validator', function () {
+    [$first, $second] = Classroom::factory()->count(2)->create();
+    Student::factory()->onboarded()->create(['classroom_id' => $first->id]);
+    Student::factory()->onboarded()->create(['classroom_id' => $second->id]);
+
+    $this->actingAs(adminUser());
+
+    $etag = $this->getJson(route('attendance.absensi.face-templates', ['classroom' => $first->id]))
+        ->headers->get('ETag');
+
+    $this->withHeaders(['If-None-Match' => $etag])
+        ->getJson(route('attendance.absensi.face-templates', ['classroom' => $second->id]))
+        ->assertOk()
+        ->assertJsonCount(1);
+});
+
+test('a siswa cannot widen their own template set with a class filter', function () {
+    $siswa = userWithRole(UserRole::Siswa);
+    $classroom = Classroom::factory()->create();
+    Student::factory()->onboarded()->create(['user_id' => $siswa->id, 'classroom_id' => $classroom->id]);
+    Student::factory()->onboarded()->count(2)->create(['classroom_id' => $classroom->id]);
+
+    $this->actingAs($siswa)
+        ->getJson(route('attendance.absensi.face-templates', ['classroom' => $classroom->id]))
+        ->assertOk()
+        ->assertJsonCount(1);
 });
 
 test('a siswa receives only their own template', function () {

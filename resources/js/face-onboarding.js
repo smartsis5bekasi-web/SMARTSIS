@@ -5,18 +5,18 @@
 // Models are self-hosted in /public/models/face-api so the app works on the
 // school LAN without internet access.
 //
-// The onboarding page (pages::onboarding.index) calls window.SmartsisFace.start()
-// from an Alpine x-init when step 2 renders, and receives the captured
-// descriptors back through $wire.storeFaceDescriptors().
+// The onboarding page (pages::onboarding.index) and the admin "Daftarkan Wajah"
+// page (pages::master-data.students.face) call window.SmartsisFace.start() from
+// an Alpine x-init, and receive the captured descriptors back through
+// $wire.storeFaceDescriptors().
 
 import * as faceapi from '@vladmandic/face-api';
 
 const MODEL_URL = '/models/face-api';
 
-// One sample is enough. Absensi itself no longer matches faces — the student
-// is identified by their session and verified by their GPS fix — so this
-// template only feeds the staffed kiosk's 1:N lookup, and a three-sample
-// ritual is friction the student pays for nothing.
+// One sample is enough. The template feeds the classroom kiosk's 1:N lookup,
+// which the kiosk narrows to a single class, so a three-sample ritual is
+// friction the student pays for little accuracy.
 const SAMPLES_NEEDED = 1;
 
 const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({

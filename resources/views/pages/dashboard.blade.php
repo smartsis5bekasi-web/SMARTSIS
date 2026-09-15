@@ -28,6 +28,18 @@ use Livewire\Component;
 new #[Title('Dashboard')] class extends Component
 {
     /**
+     * A classroom tablet signed in with a kiosk account has no dashboard of
+     * its own; sending it straight to the kiosk means the login redirect lands
+     * the device where it is meant to stay.
+     */
+    public function mount(): void
+    {
+        if (auth()->user()->hasRole(UserRole::Kiosk->value)) {
+            $this->redirectRoute('attendance.absensi.kiosk', navigate: true);
+        }
+    }
+
+    /**
      * The signed-in user's highest-priority role.
      */
     #[Computed]

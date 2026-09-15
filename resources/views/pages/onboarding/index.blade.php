@@ -1,8 +1,8 @@
 <?php
 
+use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
 use App\Models\Student;
-use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -25,7 +25,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
         $student = $user->student;
 
-        if ($student?->hasCompletedOnboarding()) {
+        if ($student !== null && ! $student->needsOnboarding()) {
             $this->redirectRoute('dashboard', navigate: true);
 
             return;
@@ -97,82 +97,33 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         $student = auth()->user()->student;
         abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
-        $isValid = count($descriptors) >= 1 && count($descriptors) <= 3 && collect($descriptors)->every(
-            fn ($sample): bool => is_array($sample)
-                && count($sample) === 128
-                && collect($sample)->every(fn ($value): bool => is_numeric($value)),
-        );
-
-        if (! $isValid) {
+        if (! app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot)) {
             $this->dispatch('swal', icon: 'error', title: __('Data wajah tidak valid. Silakan ulangi.'));
 
             return;
         }
 
-        $student->update([
-            'face_descriptors' => $descriptors,
-            'face_registered_at' => now(),
-            ...$this->storeSnapshotAsAvatar($student, $snapshot),
-        ]);
         unset($this->student);
 
         $this->step = 3;
     }
 
     /**
-     * Save the captured face snapshot as the student's profile photo. The
-     * snapshot is optional; the face template is stored either way.
-     *
-     * @return array{avatar_url?: string}
-     */
-    private function storeSnapshotAsAvatar(Student $student, ?string $snapshot): array
-    {
-        if ($snapshot === null || ! str_starts_with($snapshot, 'data:image/jpeg;base64,')) {
-            return [];
-        }
-
-        $binary = base64_decode(substr($snapshot, strlen('data:image/jpeg;base64,')), true);
-
-        // Reject anything that is not a real, reasonably sized image.
-        if ($binary === false || strlen($binary) > 2 * 1024 * 1024 || @getimagesizefromstring($binary) === false) {
-            return [];
-        }
-
-        $oldPath = $student->avatar_url !== null
-            ? str_replace(Storage::url(''), '', $student->avatar_url)
-            : null;
-
-        $path = 'students/face-'.$student->id.'-'.now()->timestamp.'.jpg';
-        Storage::disk('public')->put($path, $binary);
-
-        if ($oldPath !== null && Storage::disk('public')->exists($oldPath)) {
-            Storage::disk('public')->delete($oldPath);
-        }
-
-        return ['avatar_url' => Storage::url($path)];
-    }
-
-    /**
-     * Move on without a face template. Daily absensi does not match faces, so
-     * a student whose camera or lighting fails is not locked out of the app —
-     * they can register later from their profile, and until then the staffed
-     * kiosk simply will not find them.
-     */
-    public function skipFaceRegistration(): void
-    {
-        $student = auth()->user()->student;
-        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
-
-        $this->step = 3;
-    }
-
-    /**
      * Step 3 — student confirms their identity; onboarding is complete.
+     * The face template is mandatory: the classroom kiosk identifies students
+     * by face, so a student without one could never be marked present there.
      */
     public function completeOnboarding(): void
     {
         $student = auth()->user()->student;
         abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
+
+        if (! $student->hasRegisteredFace()) {
+            $this->step = 2;
+            $this->dispatch('swal', icon: 'error', title: __('Daftarkan wajah Anda terlebih dahulu.'));
+
+            return;
+        }
 
         $student->update(['onboarded_at' => now()]);
 
@@ -190,7 +141,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     {
         return [
             1 => ['title' => __('Verifikasi NISN'), 'subtitle' => __('Cocokkan NISN dengan data sekolah')],
-            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => __('Opsional, untuk kiosk absensi petugas')],
+            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => __('Wajib, untuk absensi wajah di kelas')],
             3 => ['title' => __('Konfirmasi Data'), 'subtitle' => __('Periksa data dan selesaikan')],
         ];
     }
@@ -294,13 +245,11 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                         {{ __('Ambil Foto Wajah') }}
                     </x-ui.button>
 
-                    <button type="button" wire:click="skipFaceRegistration"
-                        class="mt-3 w-full rounded-md px-4 py-2 text-sm font-semibold text-gray-500 transition hover:bg-gray-100 hover:text-gray-700">
-                        {{ __('Lewati dulu, daftarkan wajah nanti') }}
-                    </button>
-
                     <p class="mt-3 text-center text-xs text-gray-500">
-                        {{ __('Cukup satu foto. Absensi harian Anda tidak mencocokkan wajah — foto ini hanya dipakai kiosk absensi petugas.') }}
+                        {{ __('Cukup satu foto. Wajah ini dipakai untuk absensi cepat di tablet kelas, jadi pastikan wajah terlihat jelas dan pencahayaan cukup.') }}
+                    </p>
+                    <p class="mt-1 text-center text-xs text-gray-500">
+                        {{ __('Kamera bermasalah? Hubungi admin sekolah untuk mendaftarkan wajah Anda.') }}
                     </p>
                 </div>
             @elseif ($step === 3)

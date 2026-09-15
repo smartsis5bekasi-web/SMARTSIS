@@ -56,6 +56,9 @@ new #[Title('Detail Siswa')] class extends Component {
             <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('master-data.students.index')" wire:navigate>
                 {{ __('Kembali') }}
             </x-ui.button>
+            <x-ui.button variant="secondary" icon="scan-outline" :href="route('master-data.students.face', $student)" wire:navigate>
+                {{ $student->hasRegisteredFace() ? __('Perbarui Wajah') : __('Daftarkan Wajah') }}
+            </x-ui.button>
             <x-ui.button variant="primary" icon="create-outline" :href="route('master-data.students.edit', $student)" wire:navigate>
                 {{ __('Ubah') }}
             </x-ui.button>
@@ -105,6 +108,10 @@ new #[Title('Detail Siswa')] class extends Component {
                 @if ($student->hasRegisteredFace())
                     <span class="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
                         <ion-icon name="scan-outline"></ion-icon> {{ __('Wajah Terdaftar') }}
+                    </span>
+                @else
+                    <span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
+                        <ion-icon name="alert-circle-outline"></ion-icon> {{ __('Wajah Belum Terdaftar') }}
                     </span>
                 @endif
             </div>

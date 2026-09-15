@@ -42,6 +42,9 @@ new #[Title('Siswa')] class extends Component {
 
     public string $status = '';
 
+    /** "registered", "missing", or empty for every student. */
+    public string $face = '';
+
     public bool $showImportModal = false;
 
     public ?TemporaryUploadedFile $importFile = null;
@@ -74,9 +77,14 @@ new #[Title('Siswa')] class extends Component {
         $this->resetPage();
     }
 
+    public function updatedFace(): void
+    {
+        $this->resetPage();
+    }
+
     public function resetFilters(): void
     {
-        $this->reset(['search', 'classroomId', 'majorId', 'gender', 'status']);
+        $this->reset(['search', 'classroomId', 'majorId', 'gender', 'status', 'face']);
         $this->resetPage();
     }
 
@@ -122,6 +130,8 @@ new #[Title('Siswa')] class extends Component {
             ->when($this->status !== '', function (Builder $query) {
                 $isActive = $this->status === 'active';
                 $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive)); })
+            ->when($this->face === 'registered', fn (Builder $query) => $query->whereNotNull('face_descriptors'))
+            ->when($this->face === 'missing', fn (Builder $query) => $query->whereNull('face_descriptors'))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(10);
@@ -448,7 +458,15 @@ new #[Title('Siswa')] class extends Component {
                     <option value="inactive">{{ __('Nonaktif') }}</option>
                 </select>
 
-                @if ($search !== '' || $classroomId !== '' || $majorId !== '' || $gender !== '' || $status !== '')
+                {{-- Filter Wajah --}}
+                <select wire:model.live="face"
+                    class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Semua Wajah') }}</option>
+                    <option value="registered">{{ __('Wajah Terdaftar') }}</option>
+                    <option value="missing">{{ __('Wajah Belum Terdaftar') }}</option>
+                </select>
+
+                @if ($search !== '' || $classroomId !== '' || $majorId !== '' || $gender !== '' || $status !== '' || $face !== '')
                     <button type="button" wire:click="resetFilters" class="text-xs font-medium text-red-600 hover:underline">
                         {{ __('Reset Filter') }}
                     </button>
@@ -478,7 +496,14 @@ new #[Title('Siswa')] class extends Component {
                             <img class="h-10 w-10 rounded-full border border-gray-200 object-cover shadow-sm sm:h-12 sm:w-12"
                                 src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}" alt="{{ $student->name }}" />
                         </td>
-                        <td class="px-4 py-3 font-medium text-gray-900">{{ $student->name }}</td>
+                        <td class="px-4 py-3 font-medium text-gray-900">
+                            <span class="inline-flex items-center gap-1.5">
+                                {{ $student->name }}
+                                @unless ($student->hasRegisteredFace())
+                                    <ion-icon name="alert-circle" class="text-base text-amber-500" title="{{ __('Wajah belum terdaftar') }}"></ion-icon>
+                                @endunless
+                            </span>
+                        </td>
                         <td class="px-4 py-3">{{ $student->user?->email ?? '—' }}</td>
                         <td class="px-4 py-3">{{ $student->classroom?->name ?? '—' }}</td>
                         <td class="px-4 py-3">{{ $student->major?->name ?? '—' }}</td>
@@ -496,6 +521,9 @@ new #[Title('Siswa')] class extends Component {
                             <div class="flex items-center justify-end gap-3">
                                 <a href="{{ route('master-data.students.show', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Lihat') }}">
                                     <ion-icon name="eye-outline" class="text-xl"></ion-icon>
+                                </a>
+                                <a href="{{ route('master-data.students.face', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ $student->hasRegisteredFace() ? __('Perbarui Wajah') : __('Daftarkan Wajah') }}">
+                                    <ion-icon name="scan-outline" class="text-xl"></ion-icon>
                                 </a>
                                 <a href="{{ route('master-data.students.edit', $student) }}" wire:navigate class="inline-flex text-primary-600 transition hover:text-primary-700" title="{{ __('Ubah') }}">
                                     <ion-icon name="create-outline" class="text-xl"></ion-icon>

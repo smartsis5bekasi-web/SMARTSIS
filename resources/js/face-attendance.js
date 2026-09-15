@@ -5,9 +5,10 @@
 // Blink Detection via Eye Aspect Ratio on the 68-point landmarks) → hand the
 // matched student id to the Livewire page, which records check-in/check-out.
 //
-// Only the staffed kiosk (pages::attendance.absensi.scan) uses this, because
-// it is the one screen that has to work out *who* is standing in front of the
-// camera (1:N). A siswa on their own Absensi page is already identified by
+// Only the kiosk screens (pages::attendance.absensi.scan for staff and the
+// full-screen pages::attendance.absensi.kiosk for classroom tablets) use this,
+// because they have to work out *who* is standing in front of the camera
+// (1:N). Both may narrow the candidates to one class. A siswa on their own Absensi page is already identified by
 // their session, so that page uses the dependency-free attendance-camera.js
 // instead and starts in a fraction of the time.
 
@@ -171,7 +172,7 @@ window.SmartsisAttendance = {
      *
      * @param {HTMLElement} container
      * @param {{ record: (studentId: number, capture: object) => Promise<void> }} wire  Livewire $wire proxy.
-     * @param {{ templatesUrl: string }} options
+     * @param {{ templatesUrl: string, scoped?: boolean }} options  `scoped` when the templates cover one class.
      */
     async start(container, wire, options) {
         const video = container.querySelector('[data-face-video]');
@@ -188,6 +189,16 @@ window.SmartsisAttendance = {
         // This session's own camera stream, so the DOM-removal guard in tick()
         // never stops a newer session's stream by accident.
         let stream = null;
+
+        // Picking another class swaps the scanner element and boots a new
+        // session; the old one must hand its camera back wherever it notices.
+        const release = () => {
+            stream?.getTracks().forEach((track) => track.stop());
+
+            if (mediaStream === stream) {
+                mediaStream = null;
+            }
+        };
 
         // Kick the two slow downloads off first, but do not wait on them: the
         // camera preview is what the user is waiting to see, and it is ready in
@@ -234,17 +245,27 @@ window.SmartsisAttendance = {
             [, students] = await Promise.all([modelsPromise, templatesPromise]);
         } catch (error) {
             console.error('[SmartsisAttendance]', error);
+            release();
             setStatus('Gagal memuat data pengenalan wajah. Muat ulang halaman untuk mencoba lagi.', 'error');
 
             return;
         }
 
         if (stopped || !container.isConnected) {
+            release();
+
             return;
         }
 
         if (students.length === 0) {
-            setStatus('Belum ada siswa dengan wajah terdaftar. Daftarkan wajah melalui aktivasi akun siswa.', 'error');
+            // Nothing to match, and no loop will run to notice a class switch.
+            release();
+            setStatus(
+                options.scoped
+                    ? 'Belum ada siswa di kelas ini dengan wajah terdaftar. Daftarkan wajah melalui Data Siswa.'
+                    : 'Belum ada siswa dengan wajah terdaftar. Daftarkan wajah melalui Data Siswa.',
+                'error',
+            );
 
             return;
         }
@@ -280,14 +301,10 @@ window.SmartsisAttendance = {
                 return;
             }
 
-            // Livewire removes the scanner block once the siswa's day is
-            // fully recorded — release the camera instead of looping on.
+            // Livewire swapped the scanner out (another class was picked, or
+            // the page moved on) — release the camera instead of looping on.
             if (!container.isConnected) {
-                stream?.getTracks().forEach((track) => track.stop());
-
-                if (mediaStream === stream) {
-                    mediaStream = null;
-                }
+                release();
 
                 return;
             }

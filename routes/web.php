@@ -36,10 +36,14 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('siswa/tambah', 'pages::master-data.students.create')->name('students.create');
             Route::livewire('siswa/{student}/edit', 'pages::master-data.students.edit')->name('students.edit');
             Route::livewire('siswa/{student}/show', 'pages::master-data.students.show')->name('students.show');
+            Route::livewire('siswa/{student}/wajah', 'pages::master-data.students.face')->name('students.face');
             Route::livewire('orang-tua', 'pages::master-data.parents.index')->name('parents.index');
             Route::livewire('orang-tua/tambah', 'pages::master-data.parents.create')->name('parents.create');
             Route::livewire('orang-tua/{parent}', 'pages::master-data.parents.show')->name('parents.show');
             Route::livewire('orang-tua/{parent}/edit', 'pages::master-data.parents.edit')->name('parents.edit');
+            Route::livewire('akun-kiosk', 'pages::master-data.kiosk-accounts')->name('kiosk-accounts');
+            Route::livewire('akun-kiosk/tambah', 'pages::master-data.kiosk-accounts.create')->name('kiosk-accounts.create');
+            Route::livewire('akun-kiosk/{user}/edit', 'pages::master-data.kiosk-accounts.edit')->name('kiosk-accounts.edit');
         });
 
     // Manajemen Peran lives in the Master Data section but is gated separately:
@@ -75,10 +79,13 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
                 ->middleware('permission:'.Permission::ViewAttendance->value)
                 ->name('absensi.recap');
             Route::livewire('absensi/scan', 'pages::attendance.absensi.scan')
-                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.UserRole::Siswa->value)
+                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value.'|'.UserRole::Siswa->value)
                 ->name('absensi.scan');
+            Route::livewire('kiosk', 'pages::attendance.absensi.kiosk')
+                ->middleware('permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value)
+                ->name('absensi.kiosk');
             Route::get('absensi/face-templates', FaceTemplateController::class)
-                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.UserRole::Siswa->value)
+                ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value.'|'.UserRole::Siswa->value)
                 ->name('absensi.face-templates');
             Route::livewire('absensi/pengaturan', 'pages::attendance.absensi.settings')
                 ->middleware('permission:'.Permission::ManageAttendance->value)

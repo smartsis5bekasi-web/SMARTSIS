@@ -69,6 +69,20 @@
     ::file-selector-button {
         border-color: var(--color-gray-200, currentColor);
     }
+
+    /* Tailwind v4 dropped the pointer cursor from buttons; restore it for
+       every clickable control (dropdown triggers, popovers, modal buttons). */
+    button:not(:disabled),
+    [role='button']:not([aria-disabled='true']),
+    summary,
+    label[for],
+    select:not(:disabled),
+    input[type='checkbox']:not(:disabled),
+    input[type='radio']:not(:disabled),
+    input[type='file']:not(:disabled),
+    ::file-selector-button {
+        cursor: pointer;
+    }
 }
 
 /* Active sidebar/nav item: solid brand violet with white text instead of the

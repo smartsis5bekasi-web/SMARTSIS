@@ -55,4 +55,5 @@ test('every list table scrolls in its own container and keeps its columns readab
     'master-data/classrooms',
     'master-data/majors',
     'master-data/academic-years',
+    'master-data/kiosk-accounts',
 ]);

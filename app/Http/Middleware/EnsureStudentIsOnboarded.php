@@ -9,7 +9,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Force users with the Siswa role through the first-login onboarding
- * (NISN verification + face registration) before using the app.
+ * (NISN verification + face registration) before using the app. A student
+ * without a face template is sent back even after onboarding was stamped.
  */
 class EnsureStudentIsOnboarded
 {
@@ -24,7 +25,7 @@ class EnsureStudentIsOnboarded
 
         if ($user !== null
             && $user->hasRole(UserRole::Siswa->value)
-            && ! $user->student?->hasCompletedOnboarding()) {
+            && ($user->student?->needsOnboarding() ?? true)) {
             return redirect()->route('onboarding');
         }
 

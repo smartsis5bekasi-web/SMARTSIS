@@ -3,7 +3,8 @@
 namespace App\Enums;
 
 /**
- * The nine RBAC roles defined by the SMARTSIS PRD.
+ * The nine RBAC roles defined by the SMARTSIS PRD, plus the device-only Kiosk
+ * account that runs the face-scan attendance screen in front of a classroom.
  *
  * The backed values are used as the Spatie role names stored in the database,
  * while {@see self::label()} provides the human-readable Indonesian label.
@@ -19,6 +20,7 @@ enum UserRole: string
     case GuruMapel = 'guru_mapel';
     case Siswa = 'siswa';
     case OrangTua = 'orang_tua';
+    case Kiosk = 'kiosk';
 
     /**
      * The human-readable label for the role.
@@ -35,6 +37,7 @@ enum UserRole: string
             self::GuruMapel => 'Guru Mata Pelajaran',
             self::Siswa => 'Siswa',
             self::OrangTua => 'Orang Tua/Wali',
+            self::Kiosk => 'Kiosk Absensi',
         };
     }
 
@@ -53,6 +56,7 @@ enum UserRole: string
             self::GuruMapel => 'Guru pengajar mata pelajaran.',
             self::Siswa => 'Peserta didik, mengajukan izin dan prestasi.',
             self::OrangTua => 'Orang tua/wali, memantau perkembangan anaknya.',
+            self::Kiosk => 'Akun perangkat (tablet) di depan kelas, hanya membuka layar scan wajah.',
         };
     }
 
@@ -156,6 +160,10 @@ enum UserRole: string
                 Permission::ViewAchievement,
                 Permission::ViewPermit,
                 Permission::ViewWarning,
+            ]),
+
+            self::Kiosk => self::permissionValues([
+                Permission::UseAttendanceKiosk,
             ]),
         };
     }

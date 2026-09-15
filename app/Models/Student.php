@@ -92,6 +92,17 @@ class Student extends Model
     }
 
     /**
+     * Whether the student still has to go through onboarding before using the
+     * app. The face template is mandatory because the classroom kiosk
+     * identifies students by face, so a student who finished onboarding back
+     * when the face step could be skipped is sent back to register one.
+     */
+    public function needsOnboarding(): bool
+    {
+        return ! $this->hasCompletedOnboarding() || ! $this->hasRegisteredFace();
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo

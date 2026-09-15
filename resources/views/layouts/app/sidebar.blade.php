@@ -96,6 +96,9 @@
                                 <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
                                     {{ __('Guru') }}
                                 </x-ui.sidebar-item>
+                                <x-ui.sidebar-item icon="tablet-landscape-outline" :href="route('master-data.kiosk-accounts')" :active="request()->routeIs('master-data.kiosk-accounts*')">
+                                    {{ __('Akun Kiosk') }}
+                                </x-ui.sidebar-item>
                             @endcan
                             @can(\App\Enums\Permission::ManageRole->value)
                                 <x-ui.sidebar-item icon="shield-checkmark-outline" :href="route('master-data.roles.index')" :active="request()->routeIs('master-data.roles*')">

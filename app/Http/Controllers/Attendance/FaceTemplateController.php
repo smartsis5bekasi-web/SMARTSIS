@@ -20,6 +20,11 @@ use Illuminate\Http\Response;
  *
  * Serving them here means the browser fetches them once and then revalidates
  * with an ETag, so repeat loads cost a 304 instead of the whole set.
+ *
+ * A kiosk may pass `?classroom={id}` to match against one class only: a tablet
+ * in front of XI IPA 1 has no reason to consider the whole school, and a
+ * smaller candidate set is both faster and less likely to confuse two
+ * look-alike students from different classes.
  */
 class FaceTemplateController extends Controller
 {
@@ -27,16 +32,24 @@ class FaceTemplateController extends Controller
     {
         $user = $request->user();
 
-        // A staffed kiosk matches 1:N against everyone; anyone else only ever
-        // gets the record linked to their own account, which for a siswa is
-        // their own template and for everybody else is nothing at all.
-        $isKiosk = $user->can(Permission::ManageAttendance->value);
+        // A staffed or device kiosk matches 1:N against everyone (optionally one
+        // class); anyone else only ever gets the record linked to their own
+        // account, which for a siswa is their own template and for everybody
+        // else is nothing at all.
+        $isKiosk = $user->canAny([Permission::ManageAttendance->value, Permission::UseAttendanceKiosk->value]);
+
+        $classroomId = $isKiosk ? $request->integer('classroom') : 0;
 
         $query = Student::query()
             ->whereNotNull('face_descriptors')
-            ->unless($isKiosk, fn (Builder $inner) => $inner->where('user_id', $user->id));
+            ->unless($isKiosk, fn (Builder $inner) => $inner->where('user_id', $user->id))
+            ->when($classroomId > 0, fn (Builder $inner) => $inner->where('classroom_id', $classroomId));
 
-        $scope = $isKiosk ? 'all' : 'user:'.$user->id;
+        $scope = match (true) {
+            ! $isKiosk => 'user:'.$user->id,
+            $classroomId > 0 => 'classroom:'.$classroomId,
+            default => 'all',
+        };
 
         $version = md5(implode('|', [
             $scope,

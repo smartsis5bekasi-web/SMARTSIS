@@ -22,6 +22,7 @@ enum Permission: string
     // Attendance.
     case ViewAttendance = 'attendance.view';
     case ManageAttendance = 'attendance.manage';
+    case UseAttendanceKiosk = 'attendance.kiosk';
 
     // Violations.
     case ViewViolation = 'violation.view';
@@ -60,6 +61,7 @@ enum Permission: string
             self::ManageRole => 'Kelola Peran & Hak Akses',
             self::ViewAttendance => 'Lihat Absensi',
             self::ManageAttendance => 'Kelola Absensi',
+            self::UseAttendanceKiosk => 'Mode Kiosk Absensi',
             self::ViewViolation => 'Lihat Pelanggaran',
             self::InputViolation => 'Catat Pelanggaran',
             self::ManageViolation => 'Kelola Pelanggaran',
@@ -89,6 +91,7 @@ enum Permission: string
             self::ManageRole => 'Mengubah hak akses milik peran lain melalui halaman ini.',
             self::ViewAttendance => 'Membuka daftar dan rekap kehadiran.',
             self::ManageAttendance => 'Scan kiosk, koreksi status, dan pengaturan absensi.',
+            self::UseAttendanceKiosk => 'Hanya membuka layar kiosk scan wajah, tanpa akses menu lain.',
             self::ViewViolation => 'Membuka daftar dan detail pelanggaran.',
             self::InputViolation => 'Mencatat pelanggaran baru untuk siswa.',
             self::ManageViolation => 'Mengubah, menghapus, dan memverifikasi pelanggaran.',
@@ -115,7 +118,7 @@ enum Permission: string
         return match ($this) {
             self::ViewDashboard => 'Dashboard',
             self::ManageMasterData, self::ManageRole => 'Master Data',
-            self::ViewAttendance, self::ManageAttendance => 'Kehadiran',
+            self::ViewAttendance, self::ManageAttendance, self::UseAttendanceKiosk => 'Kehadiran',
             self::ViewViolation, self::InputViolation, self::ManageViolation => 'Pelanggaran',
             self::ViewPoint, self::ManagePoint => 'Poin Disiplin',
             self::ViewAchievement, self::RequestAchievement, self::EditAchievement, self::ManageAchievement => 'Prestasi',
