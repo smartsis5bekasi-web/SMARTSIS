@@ -28,12 +28,42 @@ let modelsReady = null;
 let mediaStream = null;
 let detectLoopId = null;
 
-function loadModels() {
-    modelsReady ??= Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-    ]);
+/**
+ * Load the three nets, reporting each one as it lands.
+ *
+ * They total ~6.8 MB, almost all of it faceRecognitionNet, so this is the slow
+ * part of starting the wizard. It is kicked off alongside getUserMedia rather
+ * than before it — see start() — and memoised so a second visit in the same
+ * page session is instant.
+ *
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+function loadModels(onProgress) {
+    if (modelsReady) {
+        return modelsReady;
+    }
+
+    const nets = [
+        faceapi.nets.tinyFaceDetector,
+        faceapi.nets.faceLandmark68Net,
+        faceapi.nets.faceRecognitionNet,
+    ];
+
+    let done = 0;
+
+    modelsReady = Promise.all(
+        nets.map((net) =>
+            net.loadFromUri(MODEL_URL).then(() => {
+                done++;
+                onProgress?.(done, nets.length);
+            }),
+        ),
+    ).catch((error) => {
+        // Let the next attempt retry instead of caching the failure forever.
+        modelsReady = null;
+
+        throw error;
+    });
 
     return modelsReady;
 }
@@ -101,10 +131,22 @@ window.SmartsisFace = {
             });
         };
 
-        try {
-            setStatus('Memuat model pengenalan wajah…');
-            await loadModels();
+        refreshUi();
 
+        // Kick the ~6.8 MB of model downloads off first, but do not wait on
+        // them: the camera preview is what the student is waiting to see, and
+        // it is ready in a fraction of the time the nets take.
+        const modelsPromise = loadModels((done, total) => {
+            if (mediaStream !== null) {
+                setStatus(`Memuat model pengenalan wajah… (${done}/${total})`);
+            }
+        });
+
+        // Nothing below should surface as an unhandled rejection while the
+        // camera prompt is still open.
+        modelsPromise.catch(() => {});
+
+        try {
             setStatus('Menyalakan kamera…');
             mediaStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
@@ -120,6 +162,24 @@ window.SmartsisFace = {
                     : 'Kamera tidak tersedia. Pastikan perangkat memiliki kamera lalu muat ulang halaman.',
                 'error',
             );
+
+            return;
+        }
+
+        // Preview is live; the detector cannot run until the nets land.
+        try {
+            setStatus('Memuat model pengenalan wajah…');
+            await modelsPromise;
+        } catch (error) {
+            console.error('[SmartsisFace]', error);
+            stopCamera();
+            setStatus('Gagal memuat model pengenalan wajah. Muat ulang halaman untuk mencoba lagi.', 'error');
+
+            return;
+        }
+
+        if (!mediaStream || !container.isConnected) {
+            stopCamera();
 
             return;
         }
