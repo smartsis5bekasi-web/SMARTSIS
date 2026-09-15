@@ -15,8 +15,9 @@ use Illuminate\Support\Facades\Hash;
 
 /**
  * Seeds a minimal but complete data set: sample master data plus one demo
- * account per role, each wired to the appropriate profile record. Every demo
- * account uses the password "password".
+ * account per role, each wired to the appropriate profile record, plus a few
+ * named student accounts for walking through onboarding and the face kiosk.
+ * Every demo account uses the password "password".
  */
 class DemoAccountSeeder extends Seeder
 {
@@ -83,6 +84,37 @@ class DemoAccountSeeder extends Seeder
             ['name' => 'Orang Tua Demo', 'phone' => '081234567890'],
         );
         $parent->students()->syncWithoutDetaching([$student->id => ['relationship' => 'Ayah']]);
+
+        // Named student accounts, left un-onboarded so they go through NISN
+        // verification and face registration on first login.
+        foreach ($this->namedStudents() as $data) {
+            $user = $this->createAccount($data['email'], $data['name'], UserRole::Siswa);
+
+            Student::firstOrCreate(
+                ['nis' => $data['nis']],
+                [
+                    'user_id' => $user->id,
+                    'nisn' => $data['nisn'],
+                    'name' => $data['name'],
+                    'gender' => 'L',
+                    'classroom_id' => $classroom->id,
+                    'major_id' => $majorIpa->id,
+                    'year_in' => 2025,
+                    'current_point' => 100,
+                ],
+            );
+        }
+    }
+
+    /**
+     * @return array<int, array{name: string, email: string, nis: string, nisn: string}>
+     */
+    private function namedStudents(): array
+    {
+        return [
+            ['name' => 'Safrudin', 'email' => 'safrudin@smartsis.test', 'nis' => '2025002', 'nisn' => '0098765433'],
+            ['name' => 'Hafidz', 'email' => 'hafidz@smartsis.test', 'nis' => '2025003', 'nisn' => '0098765434'],
+        ];
     }
 
     /**
@@ -90,10 +122,18 @@ class DemoAccountSeeder extends Seeder
      */
     private function createUser(UserRole $role): User
     {
+        return $this->createAccount($role->value.'@smartsis.test', $role->label(), $role);
+    }
+
+    /**
+     * Create (or fetch) a demo user by email and assign it the given role.
+     */
+    private function createAccount(string $email, string $name, UserRole $role): User
+    {
         $user = User::firstOrCreate(
-            ['email' => $role->value.'@smartsis.test'],
+            ['email' => $email],
             [
-                'name' => $role->label(),
+                'name' => $name,
                 'password' => Hash::make('password'),
                 'is_active' => true,
                 'email_verified_at' => now(),
