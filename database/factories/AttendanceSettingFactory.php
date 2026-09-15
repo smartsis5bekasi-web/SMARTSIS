@@ -19,6 +19,7 @@ class AttendanceSettingFactory extends Factory
             'check_in_start' => '07:00:00',
             'late_after' => '07:30:00',
             'check_out_after' => '15:00:00',
+            'ignore_schedule' => false,
             'late_rule_id' => null,
             'alpha_rule_id' => null,
         ];

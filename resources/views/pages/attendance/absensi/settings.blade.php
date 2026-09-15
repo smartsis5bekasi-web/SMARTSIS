@@ -18,6 +18,8 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
     public string $check_out_after = '15:00';
 
+    public bool $ignore_schedule = false;
+
     public ?int $late_rule_id = null;
 
     public ?int $alpha_rule_id = null;
@@ -28,6 +30,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
         $this->check_in_start = substr($this->setting->check_in_start, 0, 5);
         $this->late_after = substr($this->setting->late_after, 0, 5);
         $this->check_out_after = substr($this->setting->check_out_after, 0, 5);
+        $this->ignore_schedule = $this->setting->ignore_schedule;
         $this->late_rule_id = $this->setting->late_rule_id;
         $this->alpha_rule_id = $this->setting->alpha_rule_id;
     }
@@ -58,6 +61,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
             'check_in_start' => ['required', 'date_format:H:i'],
             'late_after' => ['required', 'date_format:H:i', 'after:check_in_start'],
             'check_out_after' => ['required', 'date_format:H:i', 'after:late_after'],
+            'ignore_schedule' => ['boolean'],
             'late_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
             'alpha_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
         ];
@@ -147,6 +151,34 @@ new #[Title('Pengaturan Absensi')] class extends Component {
                 </select>
                 <span class="mt-1 text-xs text-gray-400">{{ __('Diterapkan otomatis saat siswa ditandai Alpha.') }}</span>
                 @error('alpha_rule_id')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+        </div>
+
+        <div @class([
+            'mb-8 flex items-start gap-4 rounded-lg border p-4',
+            'border-amber-300 bg-amber-50' => $ignore_schedule,
+            'border-gray-200 bg-gray-50' => ! $ignore_schedule,
+        ])>
+            <label class="relative mt-0.5 inline-flex shrink-0 cursor-pointer items-center">
+                <input type="checkbox" wire:model.live="ignore_schedule" class="peer sr-only">
+                <div class="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-amber-500 peer-focus:ring-2 peer-focus:ring-amber-300"></div>
+                <div class="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+            </label>
+
+            <div class="flex flex-col">
+                <span class="font-semibold text-gray-700">{{ __('Buka Absensi Kapan Saja') }}</span>
+                <span class="mt-1 text-xs text-gray-500">
+                    {{ __('Untuk uji coba / demo: absensi masuk dan pulang diterima di luar jam di atas. Status Hadir/Terlambat tetap mengikuti "Terlambat Setelah", jadi absensi malam hari akan tercatat Terlambat.') }}
+                </span>
+                @if ($ignore_schedule)
+                    <span class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                        <ion-icon name="warning-outline" class="text-sm"></ion-icon>
+                        {{ __('Jangan lupa matikan kembali sebelum dipakai siswa.') }}
+                    </span>
+                @endif
+                @error('ignore_schedule')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>

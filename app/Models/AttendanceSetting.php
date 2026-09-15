@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $check_in_start
  * @property string $late_after
  * @property string $check_out_after
+ * @property bool $ignore_schedule
  * @property int|null $late_rule_id
  * @property int|null $alpha_rule_id
  */
@@ -26,6 +27,7 @@ class AttendanceSetting extends Model
         'check_in_start',
         'late_after',
         'check_out_after',
+        'ignore_schedule',
         'late_rule_id',
         'alpha_rule_id',
     ];
@@ -40,14 +42,24 @@ class AttendanceSetting extends Model
             'check_in_start' => '07:00:00',
             'late_after' => '07:30:00',
             'check_out_after' => '15:00:00',
+            'ignore_schedule' => false,
         ]);
     }
 
     /**
      * Whether the check-in window has opened at the given moment. Attendance
-     * recorded before it is rejected, so nobody can check in the night before.
+     * recorded before it is rejected, so nobody can check in the night before
+     * — unless an admin has opened absensi for testing.
      */
     public function isCheckInOpen(CarbonInterface $at): bool
+    {
+        return $this->ignore_schedule || $this->isCheckInTimeReached($at);
+    }
+
+    /**
+     * The clock alone, ignoring the "buka kapan saja" override.
+     */
+    public function isCheckInTimeReached(CarbonInterface $at): bool
     {
         return $at->format('H:i:s') >= $this->check_in_start;
     }
@@ -64,9 +76,20 @@ class AttendanceSetting extends Model
     }
 
     /**
-     * Whether check-out is already open at the given moment.
+     * Whether check-out is already open at the given moment, or an admin has
+     * opened absensi for testing.
      */
     public function isCheckOutOpen(CarbonInterface $at): bool
+    {
+        return $this->ignore_schedule || $this->isCheckOutTimeReached($at);
+    }
+
+    /**
+     * The clock alone, ignoring the "buka kapan saja" override. The kiosk
+     * picks its starting mode from this so that opening the windows for a
+     * test does not land the operator on "pulang" first thing in the morning.
+     */
+    public function isCheckOutTimeReached(CarbonInterface $at): bool
     {
         return $at->format('H:i:s') >= $this->check_out_after;
     }
@@ -83,6 +106,16 @@ class AttendanceSetting extends Model
         };
 
         return $rule?->is_active ? $rule : null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'ignore_schedule' => 'boolean',
+        ];
     }
 
     /**

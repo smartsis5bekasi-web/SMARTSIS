@@ -719,6 +719,12 @@
                                     <dd class="font-semibold text-gray-800">{{ substr($this->setting->check_out_after, 0, 5) }}</dd>
                                 </div>
                             </dl>
+                            @if ($this->setting->ignore_schedule)
+                                <div class="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                                    <ion-icon name="warning-outline" class="mt-0.5 shrink-0 text-sm"></ion-icon>
+                                    <span>{{ __('Mode uji coba aktif: absensi diterima di luar jam di atas.') }}</span>
+                                </div>
+                            @endif
                             <p class="mt-4 text-xs text-gray-500">
                                 {{ __('Absensi pulang hanya dapat dilakukan setelah absensi masuk tercatat. Absensi sakit/izin tidak memerlukan absensi pulang. Izinkan akses lokasi agar absensi Anda langsung terverifikasi.') }}
                             </p>

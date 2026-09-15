@@ -92,3 +92,42 @@ test('a fresh install gets the 07:00 to 15:00 school day', function () {
         ->and($setting->checkInStatus(now()->setTime(7, 45)))->toBe(AttendanceStatus::Terlambat)
         ->and($setting->isCheckOutOpen(now()->setTime(15, 0)))->toBeTrue();
 });
+
+test('the anytime override can be toggled from the admin page', function () {
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    Livewire::test('pages::attendance.absensi.settings')
+        ->assertSet('ignore_schedule', false)
+        ->set('ignore_schedule', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(AttendanceSetting::current()->fresh()->ignore_schedule)->toBeTrue();
+});
+
+test('the anytime override opens both windows around the clock', function () {
+    $setting = AttendanceSetting::current();
+
+    // Before the 07:00 opening, both windows are shut.
+    $dawn = now()->setTime(6, 0);
+
+    expect($setting->isCheckInOpen($dawn))->toBeFalse()
+        ->and($setting->isCheckOutOpen($dawn))->toBeFalse();
+
+    $setting->update(['ignore_schedule' => true]);
+
+    expect($setting->isCheckInOpen($dawn))->toBeTrue()
+        ->and($setting->isCheckOutOpen($dawn))->toBeTrue();
+
+    // The clock-only readings stay honest, so the kiosk still opens on "masuk".
+    expect($setting->isCheckInTimeReached($dawn))->toBeFalse()
+        ->and($setting->isCheckOutTimeReached($dawn))->toBeFalse();
+});
+
+test('the anytime override leaves the late threshold alone', function () {
+    $setting = AttendanceSetting::current();
+    $setting->update(['ignore_schedule' => true]);
+
+    expect($setting->checkInStatus(now()->setTime(7, 10)))->toBe(AttendanceStatus::Hadir)
+        ->and($setting->checkInStatus(now()->setTime(23, 43)))->toBe(AttendanceStatus::Terlambat);
+});

@@ -43,7 +43,9 @@ trait HandlesFaceScan
      */
     protected function bootFaceScan(): void
     {
-        if ($this->setting()->isCheckOutOpen(now())) {
+        // Deliberately the clock, not isCheckOutOpen(): while an admin has
+        // absensi open for testing, the kiosk should still start on "masuk".
+        if ($this->setting()->isCheckOutTimeReached(now())) {
             $this->mode = 'pulang';
         }
 
