@@ -15,6 +15,15 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
     }
 
     /**
+     * The kiosk is the one screen a student reads by themselves, so every scan
+     * ends in a dialog they have to acknowledge.
+     */
+    protected function announcesRecordedAttendance(): bool
+    {
+        return true;
+    }
+
+    /**
      * Staff open the kiosk from the scan page and can step back to it; a
      * device kiosk account has nowhere else to go, so it can only sign out.
      */

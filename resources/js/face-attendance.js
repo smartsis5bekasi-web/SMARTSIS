@@ -54,8 +54,18 @@ const SCAN_TICK_MS = 250;
 // face for a moment must not throw away a confirm phase that is almost done.
 const MISSED_FRAMES_TOLERANCE = 4;
 
-// Pause after a successful/failed record before scanning the next student.
+// Pause after a successful/failed record before scanning the next student —
+// long enough for whoever just scanned to step out of the frame, so they are
+// not immediately re-detected and told they already signed in.
 const COOLDOWN_MS = 4000;
+
+// How long to wait for the Livewire round-trip to hand back its announcement
+// before giving up and moving on without a dialog.
+const ANNOUNCE_WAIT_MS = 1500;
+
+// Safety valve: an unattended kiosk must never stay stuck behind a dialog
+// nobody dismissed.
+const ANNOUNCE_AUTOCLOSE_MS = 10000;
 
 // Append ?facedebug to the kiosk URL to read the measured liveness numbers in
 // the status line while tuning the thresholds above on a real device.
@@ -236,6 +246,53 @@ function nonRigidMotion(previous, current) {
     }
 
     return total / current.length;
+}
+
+// The Livewire page dispatches the outcome of each scan as a browser event —
+// only the classroom kiosk does, see HandlesFaceScan::announcesRecordedAttendance().
+let pendingAnnouncement = null;
+
+window.addEventListener('attendance-recorded', (event) => {
+    pendingAnnouncement = (Array.isArray(event.detail) ? event.detail[0] : event.detail) ?? null;
+});
+
+/**
+ * Show the scan outcome as a dialog the student dismisses themselves, and hold
+ * the scanner still while it is open so the next student in the queue is not
+ * recorded behind it.
+ *
+ * @returns {Promise<boolean>} whether a dialog was shown
+ */
+async function announceRecorded() {
+    const deadline = Date.now() + ANNOUNCE_WAIT_MS;
+
+    // The event lands while Livewire processes the response, which is usually
+    // just before record() resolves — but not guaranteed to be.
+    while (pendingAnnouncement === null && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    const announcement = pendingAnnouncement;
+    pendingAnnouncement = null;
+
+    // No announcement (staffed scan page) or no SweetAlert (CDN blocked): the
+    // status line and the result card still carry the outcome.
+    if (!announcement || !window.Swal) {
+        return false;
+    }
+
+    await window.Swal.fire({
+        icon: announcement.ok ? 'success' : 'error',
+        title: announcement.title,
+        text: announcement.text,
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#441daa', // brand violet (primary-600)
+        allowOutsideClick: false,
+        timer: ANNOUNCE_AUTOCLOSE_MS,
+        timerProgressBar: true,
+    });
+
+    return true;
 }
 
 window.SmartsisAttendance = {
@@ -527,6 +584,7 @@ window.SmartsisAttendance = {
                             setStatus('Wajah berubah saat konfirmasi. Silakan coba lagi.', 'warning');
                         } else {
                             await wire.record(Number(student.id), { photo });
+                            await announceRecorded();
                             setStatus('Tercatat. Silakan siswa berikutnya.', 'success');
 
                             loopId = setTimeout(tick, COOLDOWN_MS);

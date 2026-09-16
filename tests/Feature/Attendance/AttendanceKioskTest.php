@@ -56,6 +56,47 @@ test('attendance managers can open the kiosk and roles without scan access canno
         ->assertForbidden();
 });
 
+test('the kiosk announces the recorded scan with the student name and class', function () {
+    $classroom = Classroom::factory()->create(['name' => 'XI IPA 1']);
+    $student = Student::factory()->onboarded()->create([
+        'name' => 'Budi Santoso',
+        'classroom_id' => $classroom->id,
+    ]);
+
+    $this->actingAs(userWithRole(UserRole::Kiosk));
+
+    Livewire::test('pages::attendance.absensi.kiosk')
+        ->call('setMode', 'masuk')
+        ->call('record', $student->id)
+        ->assertDispatched(
+            'attendance-recorded',
+            ok: true,
+            text: 'Selamat, absensi Anda tercatat dengan nama Budi Santoso - XI IPA 1. Silakan masuk.',
+        );
+});
+
+test('a rejected scan is announced too, so the student is not left guessing', function () {
+    $student = Student::factory()->onboarded()->create();
+
+    $this->actingAs(userWithRole(UserRole::Kiosk));
+
+    Livewire::test('pages::attendance.absensi.kiosk')
+        ->call('setMode', 'masuk')
+        ->call('record', $student->id)
+        ->call('record', $student->id)
+        ->assertDispatched('attendance-recorded', ok: false);
+});
+
+test('the staffed scan page stays quiet: its operator reads the result card', function () {
+    $student = Student::factory()->onboarded()->create();
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::attendance.absensi.scan')
+        ->call('record', $student->id)
+        ->assertNotDispatched('attendance-recorded');
+});
+
 test('a kiosk account records attendance for a matched student', function () {
     $student = Student::factory()->onboarded()->create();
 

@@ -112,6 +112,7 @@ trait HandlesFaceScan
         // another class can only arrive here through a tampered request.
         if ($this->classroomId !== null && $student->classroom_id !== $this->classroomId) {
             $this->lastResult = $this->resultFor($student, false, __('Siswa ini bukan anggota kelas yang dipilih.'));
+            $this->announceResult();
 
             return;
         }
@@ -143,6 +144,52 @@ trait HandlesFaceScan
         } catch (AttendanceException $exception) {
             $this->lastResult = $this->resultFor($student, false, $exception->getMessage());
         }
+
+        $this->announceResult();
+    }
+
+    /**
+     * Whether a finished scan is announced with a dialog the student has to
+     * dismiss.
+     *
+     * Only the unattended classroom kiosk does: the student walks away the
+     * moment the camera lets go of them, and a line of small text under the
+     * video is not something someone reads from a queue — they cannot tell
+     * whether the scan worked or whose attendance it just recorded. The
+     * staffed scan page has an operator watching the result card, so a modal
+     * there would only be one more click between students.
+     */
+    protected function announcesRecordedAttendance(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Push the outcome of the last scan to the browser as a dialog payload.
+     * Picked up by resources/js/face-attendance.js, which holds the scanner
+     * still until the student dismisses it.
+     */
+    private function announceResult(): void
+    {
+        if (! $this->announcesRecordedAttendance() || $this->lastResult === null) {
+            return;
+        }
+
+        $who = $this->lastResult['classroom'] === null
+            ? $this->lastResult['name']
+            : $this->lastResult['name'].' - '.$this->lastResult['classroom'];
+
+        $this->dispatch(
+            'attendance-recorded',
+            ok: $this->lastResult['ok'],
+            title: $this->lastResult['ok'] ? __('Absensi Tercatat') : __('Absensi Gagal'),
+            text: $this->lastResult['ok']
+                ? __('Selamat, absensi Anda tercatat dengan nama :who. :followUp', [
+                    'who' => $who,
+                    'followUp' => $this->mode === 'pulang' ? __('Hati-hati di jalan.') : __('Silakan masuk.'),
+                ])
+                : __(':who: :message', ['who' => $who, 'message' => $this->lastResult['message']]),
+        );
     }
 
     /**
