@@ -62,11 +62,16 @@ class FaceTemplateController extends Controller
             return response('', Response::HTTP_NOT_MODIFIED)->setEtag($version, weak: false);
         }
 
+        // The class name travels with the template so the kiosk can put "name +
+        // class" on screen the moment it recognises someone, without a
+        // round-trip and without asking the student to pick a class first.
         $students = $query
-            ->get(['id', 'name', 'face_descriptors'])
+            ->with('classroom:id,name')
+            ->get(['id', 'name', 'classroom_id', 'face_descriptors'])
             ->map(fn (Student $student): array => [
                 'id' => $student->id,
                 'name' => $student->name,
+                'classroom' => $student->classroom?->name,
                 'descriptors' => $student->face_descriptors,
             ])
             ->all();

@@ -45,8 +45,13 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
         </div>
 
         <div class="flex items-center gap-2">
-            <button type="button" x-data title="{{ __('Layar penuh') }}"
-                x-on:click="document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()"
+            {{--
+                Plain onclick rather than Alpine: the kiosk chrome has to keep
+                working on a tablet where a bundle failed to load, which is the
+                one situation an unattended device cannot recover from itself.
+            --}}
+            <button type="button" title="{{ __('Layar penuh') }}"
+                onclick="document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()"
                 class="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 transition hover:bg-gray-50">
                 <ion-icon name="expand-outline" class="text-xl"></ion-icon>
             </button>
@@ -56,10 +61,16 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
                     {{ __('Keluar Kiosk') }}
                 </x-ui.button>
             @else
-                <form method="POST" action="{{ route('logout') }}" x-data x-ref="logout">
+                {{--
+                    A submit button that only *upgrades* to the SweetAlert
+                    confirm when the helper is there: if app.js or Alpine never
+                    loaded, the browser still posts the form and the kiosk can
+                    be signed out.
+                --}}
+                <form method="POST" action="{{ route('logout') }}">
                     @csrf
-                    <x-ui.button variant="secondary" type="button" icon="log-out-outline"
-                        x-on:click="confirmDelete(() => $refs.logout.submit(), { title: @js(__('Keluar dari akun kiosk?')), text: @js(__('Tablet ini harus login ulang untuk dipakai absensi.')), confirmButtonText: @js(__('Ya, keluar')) })">
+                    <x-ui.button variant="secondary" type="submit" icon="log-out-outline"
+                        onclick="if (window.confirmDelete) { event.preventDefault(); window.confirmDelete(() => this.form.submit(), { title: @js(__('Keluar dari akun kiosk?')), text: @js(__('Tablet ini harus login ulang untuk dipakai absensi.')), confirmButtonText: @js(__('Ya, keluar')) }); }">
                         {{ __('Keluar') }}
                     </x-ui.button>
                 </form>
@@ -69,8 +80,13 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
 
     <main class="grid flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-5">
         <div class="flex flex-col gap-4 rounded-xl bg-white p-6 drop-shadow-lg lg:col-span-3">
-            <x-attendance.classroom-picker :classrooms="$this->classrooms" />
-
+            {{--
+                No class picker here on purpose: a student walking up to the
+                tablet should only have to stand still. The kiosk matches 1:N
+                against every registered face and shows the name + class it
+                recognised. A tablet parked in front of one class can still be
+                pinned with ?kelas={id}.
+            --}}
             <x-attendance.face-scanner :mode="$mode" :templates-url="$this->templatesUrl()" :classroom-id="$classroomId" />
         </div>
 
@@ -81,8 +97,8 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
                 <p class="text-xs font-semibold uppercase tracking-wider text-primary-100">{{ __('Cara Absen') }}</p>
                 <ol class="mt-3 flex list-decimal flex-col gap-1.5 pl-5 text-sm">
                     <li>{{ __('Berdiri di depan kamera, wajah di dalam bingkai.') }}</li>
-                    <li>{{ __('Tunggu nama Anda muncul.') }}</li>
-                    <li>{{ __('Kedipkan mata sekali untuk konfirmasi.') }}</li>
+                    <li>{{ __('Tunggu nama dan kelas Anda muncul di layar.') }}</li>
+                    <li>{{ __('Tetap lihat kamera sebentar — absensi tercatat otomatis.') }}</li>
                 </ol>
             </div>
 

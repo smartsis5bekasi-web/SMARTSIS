@@ -29,6 +29,16 @@ test('a kiosk account opens the kiosk but nothing else', function () {
     $this->get(route('attendance.absensi.settings'))->assertForbidden();
 });
 
+test('the kiosk never asks a student to pick a class first', function () {
+    Classroom::factory()->create(['name' => 'XI IPA 1']);
+
+    $this->actingAs(userWithRole(UserRole::Kiosk))
+        ->get(route('attendance.absensi.kiosk'))
+        ->assertOk()
+        ->assertDontSee('Kelas yang discan')
+        ->assertSee('data-face-identity', false);
+});
+
 test('a kiosk account opening the staffed scan page is sent to the kiosk', function () {
     $this->actingAs(userWithRole(UserRole::Kiosk))
         ->get(route('attendance.absensi.scan'))

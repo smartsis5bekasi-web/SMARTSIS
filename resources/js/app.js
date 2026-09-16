@@ -15,6 +15,18 @@
  * @param {{title?: string, text?: string, confirmButtonText?: string, cancelButtonText?: string}} [options]
  */
 window.confirmDelete = function confirmDelete(onConfirm, options = {}) {
+    // SweetAlert2 is loaded from a CDN, and a CDN is exactly the thing a school
+    // network, an ad-blocker or Edge's tracking prevention will drop. Without
+    // this fallback every confirm-guarded button (kiosk logout included) turns
+    // into a dead button that throws in the console and does nothing visible.
+    if (!window.Swal) {
+        if (window.confirm(options.text ?? 'Data yang dihapus tidak dapat dikembalikan.')) {
+            onConfirm?.();
+        }
+
+        return;
+    }
+
     window.Swal.fire({
         title: options.title ?? 'Apakah Anda yakin?',
         text: options.text ?? 'Data yang dihapus tidak dapat dikembalikan.',

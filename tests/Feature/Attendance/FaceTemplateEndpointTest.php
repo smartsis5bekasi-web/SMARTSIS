@@ -31,7 +31,17 @@ test('the staffed kiosk receives every registered template', function () {
     expect($response->json())->toHaveCount(3)
         ->and(collect($response->json())->pluck('id')->sort()->values()->all())
         ->toBe($registered->pluck('id')->sort()->values()->all())
-        ->and($response->json('0'))->toHaveKeys(['id', 'name', 'descriptors']);
+        ->and($response->json('0'))->toHaveKeys(['id', 'name', 'classroom', 'descriptors']);
+});
+
+test('a template carries the class name so the kiosk can show it without picking a class', function () {
+    $classroom = Classroom::factory()->create(['name' => 'XI IPA 1']);
+    Student::factory()->onboarded()->create(['classroom_id' => $classroom->id]);
+
+    $this->actingAs(userWithRole(UserRole::Kiosk))
+        ->getJson(route('attendance.absensi.face-templates'))
+        ->assertOk()
+        ->assertJsonPath('0.classroom', 'XI IPA 1');
 });
 
 test('a kiosk narrows the templates to one class', function () {

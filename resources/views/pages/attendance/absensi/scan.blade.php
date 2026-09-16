@@ -35,7 +35,7 @@ new #[Title('Scan Absensi')] class extends Component {
     @vite('resources/js/face-attendance.js')
 
     <x-ui.page-header :title="__('Scan Absensi')"
-        :subtitle="__('Arahkan wajah siswa ke kamera, lalu kedipkan mata untuk konfirmasi.')">
+        :subtitle="__('Arahkan wajah siswa ke kamera; nama dan kelas muncul lalu absensi tercatat otomatis.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="list-outline" :href="route('attendance.absensi')" wire:navigate>
                 {{ __('Monitoring') }}

@@ -16,8 +16,8 @@ use Livewire\Attributes\Url;
 /**
  * The face-scan attendance flow shared by the staffed scan page and the
  * full-screen classroom kiosk: the browser (resources/js/face-attendance.js)
- * identifies the student and runs the blink check, then hands the matched id
- * to {@see self::record()}.
+ * identifies the student and runs the passive liveness check, then hands the
+ * matched id to {@see self::record()}.
  */
 trait HandlesFaceScan
 {
@@ -96,7 +96,7 @@ trait HandlesFaceScan
     }
 
     /**
-     * Record the matched student's attendance after the blink challenge.
+     * Record the matched student's attendance after the liveness check.
      * Check-out for a student who has not checked in is rejected by the
      * engine ({@see RecordAttendance::checkOut}) and surfaces as an error
      * card. The kiosk keeps the matched frame as evidence; the location is

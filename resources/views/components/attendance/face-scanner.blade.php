@@ -40,6 +40,13 @@
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div class="h-3/4 w-1/2 rounded-[50%] border-2 border-white/60"></div>
             </div>
+
+            {{-- Name + class plate, filled by face-attendance.js the moment a face matches. --}}
+            <div data-face-identity
+                class="pointer-events-none absolute inset-x-0 bottom-0 hidden bg-gradient-to-t from-black/80 to-transparent px-4 pb-4 pt-10 text-center">
+                <p data-face-identity-name class="text-2xl font-bold leading-tight text-white sm:text-3xl"></p>
+                <p data-face-identity-class class="text-sm font-medium text-white/80"></p>
+            </div>
         </div>
 
         <p data-face-status class="mt-4 min-h-6 text-center text-sm text-gray-500">{{ __('Menyiapkan kamera…') }}</p>

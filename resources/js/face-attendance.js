@@ -1,9 +1,14 @@
 // SMARTSIS — Smart Attendance kiosk (PRD F-09/F-10).
 //
 // Continuous loop: detect a face → match it against every registered student
-// template (1:N, face-api FaceMatcher) → ask for a blink (liveness, PRD 8.5
-// Blink Detection via Eye Aspect Ratio on the 68-point landmarks) → hand the
-// matched student id to the Livewire page, which records check-in/check-out.
+// template (1:N, face-api FaceMatcher) → confirm the face is a live person, not
+// a photo (PRD 8.5 liveness) → hand the matched student id to the Livewire
+// page, which records check-in/check-out.
+//
+// The student does nothing but stand in front of the camera: no class to pick
+// beforehand and no blink to perform, because at 30+ students per class every
+// extra instruction turns into a queue. Liveness is therefore *passive* — see
+// the confirm phase below.
 //
 // Only the kiosk screens (pages::attendance.absensi.scan for staff and the
 // full-screen pages::attendance.absensi.kiosk for classroom tablets) use this,
@@ -20,18 +25,41 @@ const MODEL_URL = '/models/face-api';
 const MATCH_THRESHOLD = 0.5;
 
 // A face must match the same student on this many consecutive frames before
-// the blink challenge starts (guards against one-frame mismatches).
+// the confirm phase starts (guards against one-frame mismatches).
 const STABLE_FRAMES_NEEDED = 2;
 
-// Eye Aspect Ratio bounds: closed below EAR_CLOSED, open again above EAR_OPEN.
-const EAR_CLOSED = 0.25;
-const EAR_OPEN = 0.3;
+// --- Passive liveness -------------------------------------------------------
+//
+// A live face is never perfectly still: eyelids, brows and mouth keep shifting
+// by a fraction of a face-width even when someone "holds still". A photo — on
+// paper or on a phone screen — moves *rigidly*, so once translation and scale
+// are normalised away its landmarks freeze. nonRigidMotion() measures exactly
+// that residual, in face-widths per frame, and a blink (a wide swing in eye
+// aspect ratio) is accepted as proof on its own.
+const LIVENESS_SAMPLES_NEEDED = 6;
+const LIVENESS_MIN_MOTION = 0.0035;
+const LIVENESS_EAR_RANGE = 0.06;
 
-// How long the student has to blink before the kiosk resumes scanning.
-const BLINK_TIMEOUT_MS = 8000;
+// How long a face may stay in the confirm phase before the kiosk gives up and
+// resumes scanning. Generous on purpose: a real person clears the check in
+// well under a second, so this only ever expires on a photo.
+const LIVENESS_TIMEOUT_MS = 6000;
+
+// Landmark-only passes are ~10× cheaper than a pass with the descriptor, so
+// the confirm phase can sample fast enough to see eyelid movement.
+const CONFIRM_TICK_MS = 60;
+const SCAN_TICK_MS = 250;
+
+// Detection drops a frame now and then (motion blur, eyes closing). Losing the
+// face for a moment must not throw away a confirm phase that is almost done.
+const MISSED_FRAMES_TOLERANCE = 4;
 
 // Pause after a successful/failed record before scanning the next student.
 const COOLDOWN_MS = 4000;
+
+// Append ?facedebug to the kiosk URL to read the measured liveness numbers in
+// the status line while tuning the thresholds above on a real device.
+const DEBUG = typeof window !== 'undefined' && window.location.search.includes('facedebug');
 
 const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
     inputSize: 320,
@@ -87,7 +115,7 @@ function loadModels(onProgress) {
  * The registered face templates, fetched once from the cached endpoint.
  *
  * @param {string} url
- * @returns {Promise<Array<{ id: number, name: string, descriptors: number[][] }>>}
+ * @returns {Promise<Array<{ id: number, name: string, classroom: string|null, descriptors: number[][] }>>}
  */
 async function fetchTemplates(url) {
     const response = await fetch(url, {
@@ -163,12 +191,59 @@ function averageEar(landmarks) {
     return (eyeAspectRatio(landmarks.getLeftEye()) + eyeAspectRatio(landmarks.getRightEye())) / 2;
 }
 
+/**
+ * The 68 landmarks with translation and scale taken out: centred on their own
+ * centroid and measured in face-widths. Two such sets can be compared directly
+ * however far the head has drifted across the frame or towards the camera.
+ *
+ * @param {faceapi.FaceLandmarks68} landmarks
+ * @param {{ width: number }} box
+ * @returns {Array<{x: number, y: number}>}
+ */
+function normaliseLandmarks(landmarks, box) {
+    const points = landmarks.positions;
+    const scale = box.width || 1;
+
+    let centreX = 0;
+    let centreY = 0;
+
+    for (const point of points) {
+        centreX += point.x;
+        centreY += point.y;
+    }
+
+    centreX /= points.length;
+    centreY /= points.length;
+
+    return points.map((point) => ({
+        x: (point.x - centreX) / scale,
+        y: (point.y - centreY) / scale,
+    }));
+}
+
+/**
+ * Mean per-landmark movement between two normalised sets — i.e. the part of the
+ * motion a rigid object (a photo being held up) cannot produce.
+ *
+ * @param {Array<{x: number, y: number}>} previous
+ * @param {Array<{x: number, y: number}>} current
+ */
+function nonRigidMotion(previous, current) {
+    let total = 0;
+
+    for (let index = 0; index < current.length; index++) {
+        total += distance(previous[index], current[index]);
+    }
+
+    return total / current.length;
+}
+
 window.SmartsisAttendance = {
     /**
      * Boot the kiosk inside the given container.
      *
      * Expected elements inside `container`:
-     *   video[data-face-video], [data-face-status].
+     *   video[data-face-video], [data-face-status], [data-face-identity] (optional).
      *
      * @param {HTMLElement} container
      * @param {{ record: (studentId: number, capture: object) => Promise<void> }} wire  Livewire $wire proxy.
@@ -177,6 +252,9 @@ window.SmartsisAttendance = {
     async start(container, wire, options) {
         const video = container.querySelector('[data-face-video]');
         const statusEl = container.querySelector('[data-face-status]');
+        const identityEl = container.querySelector('[data-face-identity]');
+        const identityNameEl = container.querySelector('[data-face-identity-name]');
+        const identityClassEl = container.querySelector('[data-face-identity-class]');
 
         const setStatus = (text, tone = 'info') => {
             statusEl.textContent = text;
@@ -184,6 +262,26 @@ window.SmartsisAttendance = {
             statusEl.classList.toggle('text-green-600', tone === 'success');
             statusEl.classList.toggle('text-amber-600', tone === 'warning');
             statusEl.classList.toggle('text-gray-500', tone === 'info');
+        };
+
+        /**
+         * The big name + class plate over the camera: the only feedback a
+         * student in the queue actually reads.
+         */
+        const showIdentity = (student) => {
+            if (!identityEl) {
+                return;
+            }
+
+            if (student === null) {
+                identityEl.classList.add('hidden');
+
+                return;
+            }
+
+            identityNameEl.textContent = student.name;
+            identityClassEl.textContent = student.classroom ?? '';
+            identityEl.classList.remove('hidden');
         };
 
         // This session's own camera stream, so the DOM-removal guard in tick()
@@ -281,19 +379,44 @@ window.SmartsisAttendance = {
             MATCH_THRESHOLD,
         );
 
-        const names = new Map(students.map((student) => [String(student.id), student.name]));
+        const byId = new Map(students.map((student) => [String(student.id), student]));
 
-        // --- Scan state machine: scanning → blink challenge → record → cooldown.
+        // --- Scan state machine: scanning → confirm (liveness) → record → cooldown.
         let matchedId = null;
         let stableFrames = 0;
-        let blinkDeadline = null;
-        let eyesClosed = false;
+        let missedFrames = 0;
+        let confirming = false;
+        let confirmDeadline = 0;
+        let livenessSamples = 0;
+        let motionTotal = 0;
+        let earMin = Infinity;
+        let earMax = -Infinity;
+        let previousShape = null;
 
         const resetScan = () => {
             matchedId = null;
             stableFrames = 0;
-            blinkDeadline = null;
-            eyesClosed = false;
+            missedFrames = 0;
+            confirming = false;
+            confirmDeadline = 0;
+            livenessSamples = 0;
+            motionTotal = 0;
+            earMin = Infinity;
+            earMax = -Infinity;
+            previousShape = null;
+            showIdentity(null);
+        };
+
+        /** Enough evidence that the thing in front of the camera is a person? */
+        const isLive = () => {
+            if (livenessSamples < LIVENESS_SAMPLES_NEEDED) {
+                return false;
+            }
+
+            return (
+                motionTotal / livenessSamples >= LIVENESS_MIN_MOTION ||
+                earMax - earMin >= LIVENESS_EAR_RANGE
+            );
         };
 
         const tick = async () => {
@@ -309,17 +432,33 @@ window.SmartsisAttendance = {
                 return;
             }
 
+            let nextTick = SCAN_TICK_MS;
+
             try {
-                const result = await faceapi
-                    .detectSingleFace(video, DETECTOR_OPTIONS)
-                    .withFaceLandmarks()
-                    .withFaceDescriptor();
+                // Phase 1 needs the descriptor to identify the face; phase 2
+                // only reads landmarks, which is what lets it sample fast
+                // enough to see an eyelid move.
+                const result = confirming
+                    ? await faceapi.detectSingleFace(video, DETECTOR_OPTIONS).withFaceLandmarks()
+                    : await faceapi
+                          .detectSingleFace(video, DETECTOR_OPTIONS)
+                          .withFaceLandmarks()
+                          .withFaceDescriptor();
 
                 if (!result) {
-                    resetScan();
-                    setStatus('Posisikan wajah Anda di tengah kamera.');
-                } else if (blinkDeadline === null) {
+                    missedFrames++;
+
+                    // Mid-confirm, a dropped frame is normal — keep the match.
+                    if (confirming && missedFrames <= MISSED_FRAMES_TOLERANCE) {
+                        previousShape = null;
+                        nextTick = CONFIRM_TICK_MS;
+                    } else {
+                        resetScan();
+                        setStatus('Posisikan wajah Anda di tengah kamera.');
+                    }
+                } else if (!confirming) {
                     // Phase 1 — identify the face.
+                    missedFrames = 0;
                     const match = matcher.findBestMatch(result.descriptor);
 
                     if (match.label === 'unknown') {
@@ -329,40 +468,74 @@ window.SmartsisAttendance = {
                         stableFrames++;
 
                         if (stableFrames >= STABLE_FRAMES_NEEDED) {
-                            blinkDeadline = Date.now() + BLINK_TIMEOUT_MS;
-                            eyesClosed = false;
-                            setStatus(`${names.get(matchedId)} terdeteksi. Kedipkan mata Anda…`, 'success');
+                            confirming = true;
+                            confirmDeadline = Date.now() + LIVENESS_TIMEOUT_MS;
+                            previousShape = null;
+                            nextTick = CONFIRM_TICK_MS;
+                            showIdentity(byId.get(matchedId));
+                            setStatus(`${byId.get(matchedId).name} terdeteksi. Tetap lihat kamera…`, 'success');
                         }
                     } else {
                         matchedId = match.label;
                         stableFrames = 1;
-                        setStatus(`Memverifikasi ${names.get(match.label)}…`);
+                        showIdentity(byId.get(match.label));
+                        setStatus(`Memverifikasi ${byId.get(match.label).name}…`);
                     }
                 } else {
-                    // Phase 2 — liveness: wait for a close→open transition.
+                    // Phase 2 — passive liveness on the identified face.
+                    missedFrames = 0;
+                    nextTick = CONFIRM_TICK_MS;
+
+                    const shape = normaliseLandmarks(result.landmarks, result.detection.box);
                     const ear = averageEar(result.landmarks);
 
-                    if (ear < EAR_CLOSED) {
-                        eyesClosed = true;
+                    earMin = Math.min(earMin, ear);
+                    earMax = Math.max(earMax, ear);
+
+                    if (previousShape) {
+                        motionTotal += nonRigidMotion(previousShape, shape);
+                        livenessSamples++;
                     }
 
-                    if (eyesClosed && ear > EAR_OPEN) {
-                        const studentId = Number(matchedId);
-                        const name = names.get(matchedId);
-                        resetScan();
+                    previousShape = shape;
 
-                        setStatus(`Mencatat absensi ${name}…`, 'success');
-                        await wire.record(studentId, { photo: grabFrame(video) });
-                        setStatus('Tercatat. Silakan siswa berikutnya.', 'success');
-
-                        loopId = setTimeout(tick, COOLDOWN_MS);
-
-                        return;
+                    if (DEBUG && livenessSamples > 0) {
+                        setStatus(
+                            `motion ${(motionTotal / livenessSamples).toFixed(5)} · EAR Δ${(earMax - earMin).toFixed(3)} · n=${livenessSamples}`,
+                        );
                     }
 
-                    if (Date.now() > blinkDeadline) {
+                    if (isLive()) {
+                        const student = byId.get(matchedId);
+                        const photo = grabFrame(video);
+
+                        setStatus(`Mencatat absensi ${student.name}…`, 'success');
+
+                        // One last full pass: nobody may step in front of the
+                        // camera between identification and the record itself.
+                        const verified = await faceapi
+                            .detectSingleFace(video, DETECTOR_OPTIONS)
+                            .withFaceLandmarks()
+                            .withFaceDescriptor();
+
+                        const stillMatches =
+                            verified && matcher.findBestMatch(verified.descriptor).label === matchedId;
+
                         resetScan();
-                        setStatus('Kedipan tidak terdeteksi. Coba posisikan wajah kembali.', 'warning');
+
+                        if (!stillMatches) {
+                            setStatus('Wajah berubah saat konfirmasi. Silakan coba lagi.', 'warning');
+                        } else {
+                            await wire.record(Number(student.id), { photo });
+                            setStatus('Tercatat. Silakan siswa berikutnya.', 'success');
+
+                            loopId = setTimeout(tick, COOLDOWN_MS);
+
+                            return;
+                        }
+                    } else if (Date.now() > confirmDeadline) {
+                        resetScan();
+                        setStatus('Wajah tidak bergerak sama sekali. Absensi hanya menerima orang, bukan foto.', 'warning');
                     }
                 }
             } catch (error) {
@@ -371,7 +544,7 @@ window.SmartsisAttendance = {
                 setStatus('Terjadi kesalahan saat memproses wajah. Mencoba lagi…', 'error');
             }
 
-            loopId = setTimeout(tick, 250);
+            loopId = setTimeout(tick, nextTick);
         };
 
         tick();
