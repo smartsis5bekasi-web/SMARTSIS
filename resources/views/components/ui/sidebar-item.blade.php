@@ -23,6 +23,6 @@
         'text-gray-600 hover:bg-gray-100 hover:text-gray-900' => ! $active,
     ])
 >
-    <ion-icon name="{{ $icon }}" class="text-xl"></ion-icon>
-    <span>{{ $slot }}</span>
+    <ion-icon name="{{ $icon }}" class="shrink-0 text-xl"></ion-icon>
+    <span class="truncate">{{ $slot }}</span>
 </a>

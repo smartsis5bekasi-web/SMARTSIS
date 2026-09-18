@@ -4,14 +4,16 @@
         @include('partials.head')
     </head>
     <body class="min-h-screen bg-white dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:sidebar.header>
+        {{-- `max-w-[80vw]` keeps the mobile overlay from swallowing the whole
+             screen on narrow phones; the desktop rail stays at Flux's w-64. --}}
+        <flux:sidebar sticky collapsible="mobile" class="max-w-[80vw] border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+            <flux:sidebar.header class="shrink-0">
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
-                <flux:sidebar.collapse class="lg:hidden" />
+                <flux:sidebar.collapse class="shrink-0 lg:hidden" />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
-                <nav class="flex flex-col gap-6 px-2">
+                <nav class="flex flex-col gap-6 px-1 sm:px-2">
                     <div class="flex flex-col gap-1">
                         <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Platform') }}</p>
                         <x-ui.sidebar-item icon="grid-outline" :href="route('dashboard')" :active="request()->routeIs('dashboard')">

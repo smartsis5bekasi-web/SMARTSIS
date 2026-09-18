@@ -109,6 +109,32 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     }
 
     /**
+     * Step 3 → 2 — the student is not happy with the photo (blurry, bad
+     * lighting, wrong person in frame) and wants to shoot it again. The stored
+     * template stays until a new capture overwrites it, so backing out of the
+     * retake leaves the account exactly as it was.
+     */
+    public function retakeFace(): void
+    {
+        $student = auth()->user()->student;
+        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
+
+        $this->step = 2;
+    }
+
+    /**
+     * Step 2 → 3 — leave the retake without capturing anything. Only reachable
+     * when a face is already registered; otherwise step 2 is mandatory.
+     */
+    public function cancelRetakeFace(): void
+    {
+        $student = auth()->user()->student;
+        abort_unless($student !== null && $student->hasRegisteredFace(), 403);
+
+        $this->step = 3;
+    }
+
+    /**
      * Step 3 — student confirms their identity; onboarding is complete.
      * The face template is mandatory: the classroom kiosk identifies students
      * by face, so a student without one could never be marked present there.
@@ -227,7 +253,15 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                     </x-ui.button>
                 </form>
             @elseif ($step === 2)
-                <div x-data x-init="window.SmartsisFace.start($el, $wire)" class="flex flex-col">
+                @php($isRetake = (bool) $this->student?->hasRegisteredFace())
+                <div wire:key="face-capture" x-data x-init="window.SmartsisFace.start($el, $wire)" class="flex flex-col">
+                    @if ($isRetake)
+                        <div class="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+                            <ion-icon name="information-circle-outline" class="mt-0.5 shrink-0 text-lg"></ion-icon>
+                            <span>{{ __('Foto lama masih tersimpan. Foto akan diganti hanya setelah Anda mengambil foto baru.') }}</span>
+                        </div>
+                    @endif
+
                     <div class="relative overflow-hidden rounded-2xl border-2 border-dashed border-primary-400 bg-gray-900">
                         <video data-face-video playsinline muted autoplay class="aspect-[4/3] w-full -scale-x-100 object-cover"></video>
                         <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -241,9 +275,18 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                         <span data-dot class="h-2.5 w-2.5 rounded-full bg-gray-200 transition"></span>
                     </div>
 
-                    <x-ui.button variant="primary" icon="camera-outline" class="mt-8 w-full" data-face-capture disabled>
-                        {{ __('Ambil Foto Wajah') }}
-                    </x-ui.button>
+                    <div class="mt-8 flex flex-col gap-3 sm:flex-row-reverse">
+                        <x-ui.button variant="primary" icon="camera-outline" class="w-full sm:flex-1" data-face-capture disabled>
+                            {{ __('Ambil Foto Wajah') }}
+                        </x-ui.button>
+
+                        @if ($isRetake)
+                            <x-ui.button variant="secondary" icon="arrow-back-outline" class="w-full sm:w-auto"
+                                x-on:click="window.SmartsisFace.stop()" wire:click="cancelRetakeFace">
+                                {{ __('Batal') }}
+                            </x-ui.button>
+                        @endif
+                    </div>
 
                     <p class="mt-3 text-center text-xs text-gray-500">
                         {{ __('Cukup satu foto. Wajah ini dipakai untuk absensi cepat di tablet kelas, jadi pastikan wajah terlihat jelas dan pencahayaan cukup.') }}
@@ -306,12 +349,19 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
                     <p class="text-sm text-gray-500">
                         {{ __('Pastikan data di atas benar milik Anda. Jika ada yang tidak sesuai, hubungi admin sekolah.') }}
+                        {{ __('Foto wajah buram atau kurang jelas? Tekan “Ulangi Foto” untuk mengambil ulang.') }}
                     </p>
 
-                    <x-ui.button variant="primary" icon="checkmark-circle-outline" wire:click="completeOnboarding" class="w-full">
-                        <span wire:loading.remove wire:target="completeOnboarding">{{ __('Konfirmasi & Masuk Dashboard') }}</span>
-                        <span wire:loading wire:target="completeOnboarding">{{ __('Menyimpan…') }}</span>
-                    </x-ui.button>
+                    <div class="flex flex-col gap-3 sm:flex-row-reverse">
+                        <x-ui.button variant="primary" icon="checkmark-circle-outline" wire:click="completeOnboarding" class="w-full sm:flex-1">
+                            <span wire:loading.remove wire:target="completeOnboarding">{{ __('Konfirmasi & Masuk Dashboard') }}</span>
+                            <span wire:loading wire:target="completeOnboarding">{{ __('Menyimpan…') }}</span>
+                        </x-ui.button>
+
+                        <x-ui.button variant="secondary" icon="camera-reverse-outline" wire:click="retakeFace" class="w-full sm:w-auto">
+                            {{ __('Ulangi Foto') }}
+                        </x-ui.button>
+                    </div>
                 </div>
             @endif
         </div>

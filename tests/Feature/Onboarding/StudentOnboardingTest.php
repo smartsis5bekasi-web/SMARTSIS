@@ -337,3 +337,87 @@ test('a nisn-verified student without a face resumes at the face step', function
     Livewire::test('pages::onboarding.index')
         ->assertSet('step', 2);
 });
+
+test('the confirmation step offers a way back to retake the face photo', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'face_descriptors' => fakeFaceDescriptors(),
+        'face_registered_at' => now(),
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 3)
+        ->assertSee('Ulangi Foto')
+        ->call('retakeFace')
+        ->assertSet('step', 2);
+});
+
+test('retaking the photo keeps the stored face template until a new one is captured', function () {
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'face_descriptors' => fakeFaceDescriptors(),
+        'face_registered_at' => now(),
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('retakeFace')
+        ->assertSet('step', 2)
+        ->assertSee('Batal')
+        ->call('cancelRetakeFace')
+        ->assertSet('step', 3);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeTrue();
+});
+
+test('a retaken photo replaces the stored face template and profile photo', function () {
+    Storage::fake('public');
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'face_descriptors' => fakeFaceDescriptors(),
+        'face_registered_at' => now(),
+        'avatar_url' => null,
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('retakeFace')
+        ->call('storeFaceDescriptors', [array_fill(0, 128, 0.25)], fakeFaceSnapshot())
+        ->assertSet('step', 3);
+
+    $student->refresh();
+    expect($student->face_descriptors)->toHaveCount(1)
+        ->and($student->avatar_url)->not->toBeNull();
+});
+
+test('the retake step cannot be cancelled when no face is registered yet', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->assertDontSee('Batal')
+        ->call('cancelRetakeFace')
+        ->assertStatus(403);
+});
+
+test('the face step cannot be reopened before the nisn is verified', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('retakeFace')
+        ->assertStatus(403);
+});
