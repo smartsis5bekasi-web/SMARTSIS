@@ -37,6 +37,21 @@ enum PermitType: string
     }
 
     /**
+     * The types that may be picked in the UI right now. Izin Terlambat is
+     * temporarily withdrawn at the client's request; the case itself stays so
+     * existing permits and the late-penalty waiver keep working.
+     *
+     * @return array<int, self>
+     */
+    public static function selectable(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            fn (self $type): bool => $type !== self::Terlambat,
+        ));
+    }
+
+    /**
      * All type backed values.
      *
      * @return array<int, string>
@@ -44,5 +59,15 @@ enum PermitType: string
     public static function values(): array
     {
         return array_map(fn (self $type): string => $type->value, self::cases());
+    }
+
+    /**
+     * Backed values of the currently selectable types.
+     *
+     * @return array<int, string>
+     */
+    public static function selectableValues(): array
+    {
+        return array_map(fn (self $type): string => $type->value, self::selectable());
     }
 }

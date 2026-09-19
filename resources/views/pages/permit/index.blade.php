@@ -106,7 +106,7 @@ new #[Title('Perizinan')] class extends Component
      */
     public function types(): array
     {
-        return PermitType::cases();
+        return PermitType::selectable();
     }
 
     /**

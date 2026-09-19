@@ -34,7 +34,7 @@ new #[Title('Ajukan Izin')] class extends Component {
      */
     public function types(): array
     {
-        return PermitType::cases();
+        return PermitType::selectable();
     }
 
     /**
@@ -43,7 +43,7 @@ new #[Title('Ajukan Izin')] class extends Component {
     protected function rules(): array
     {
         return [
-            'type' => ['required', Rule::enum(PermitType::class)],
+            'type' => ['required', Rule::enum(PermitType::class)->only(PermitType::selectable())],
             'date' => ['required', 'date', 'after_or_equal:today'],
             'reason' => ['required', 'string', 'max:1000'],
             'attachment' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],

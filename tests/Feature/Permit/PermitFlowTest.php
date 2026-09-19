@@ -50,7 +50,7 @@ test('a siswa can submit a permit request', function () {
     $this->actingAs($user);
 
     Livewire::test('pages::permit.create')
-        ->set('type', PermitType::Terlambat->value)
+        ->set('type', PermitType::Keluar->value)
         ->set('date', now()->toDateString())
         ->set('reason', 'Antar adik berobat ke puskesmas.')
         ->call('save')
@@ -59,18 +59,18 @@ test('a siswa can submit a permit request', function () {
 
     $permit = $student->permits()->sole();
 
-    expect($permit->type)->toBe(PermitType::Terlambat)
+    expect($permit->type)->toBe(PermitType::Keluar)
         ->and($permit->status)->toBe(PermitStatus::Pending);
 });
 
 test('a duplicate request for the same type and date is rejected', function () {
     [$user, $student] = siswaWithStudent();
-    Permit::factory()->for($student)->ofType(PermitType::Terlambat)->create(['date' => now()->toDateString()]);
+    Permit::factory()->for($student)->ofType(PermitType::Keluar)->create(['date' => now()->toDateString()]);
 
     $this->actingAs($user);
 
     Livewire::test('pages::permit.create')
-        ->set('type', PermitType::Terlambat->value)
+        ->set('type', PermitType::Keluar->value)
         ->set('date', now()->toDateString())
         ->set('reason', 'Duplikat.')
         ->call('save')
@@ -90,6 +90,43 @@ test('a permit cannot be requested for a past date', function () {
         ->set('reason', 'Mundur.')
         ->call('save')
         ->assertHasErrors('date');
+});
+
+test('izin terlambat is no longer offered on the request form', function () {
+    [$user] = siswaWithStudent();
+
+    $this->actingAs($user);
+
+    $component = Livewire::test('pages::permit.create');
+
+    expect($component->instance()->types())->not->toContain(PermitType::Terlambat);
+
+    $component
+        ->set('type', PermitType::Terlambat->value)
+        ->set('date', now()->toDateString())
+        ->set('reason', 'Terlambat karena macet.')
+        ->call('save')
+        ->assertHasErrors('type');
+});
+
+test('izin terlambat is no longer offered on the manual form', function () {
+    $student = Student::factory()->create();
+
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    $component = Livewire::test('pages::permit.manual');
+
+    expect($component->instance()->types())->not->toContain(PermitType::Terlambat);
+
+    $component
+        ->set('student_id', $student->id)
+        ->set('type', PermitType::Terlambat->value)
+        ->set('date', now()->toDateString())
+        ->set('reason', 'Terlambat karena macet.')
+        ->call('save')
+        ->assertHasErrors('type');
+
+    expect($student->permits()->count())->toBe(0);
 });
 
 test('an account without a student record cannot open the request form', function () {
@@ -269,7 +306,7 @@ test('a manual permit may be backdated and keeps a custom approval note', functi
 
     Livewire::test('pages::permit.manual')
         ->set('student_id', $student->id)
-        ->set('type', PermitType::Terlambat->value)
+        ->set('type', PermitType::PulangAwal->value)
         ->set('date', now()->subDays(2)->toDateString())
         ->set('reason', 'Ban motor bocor, sudah dikonfirmasi wali kelas.')
         ->set('note', 'Sudah dikonfirmasi wali kelas.')
@@ -283,15 +320,15 @@ test('a manual permit may be backdated and keeps a custom approval note', functi
 
 test('a manual permit cannot duplicate a live request of the same type and date', function () {
     $student = Student::factory()->create();
-    Permit::factory()->for($student)->ofType(PermitType::Terlambat)->create(['date' => now()->toDateString()]);
+    Permit::factory()->for($student)->ofType(PermitType::PulangAwal)->create(['date' => now()->toDateString()]);
 
     $this->actingAs(userWithRole(UserRole::GuruPiket));
 
     Livewire::test('pages::permit.manual')
         ->set('student_id', $student->id)
-        ->set('type', PermitType::Terlambat->value)
+        ->set('type', PermitType::PulangAwal->value)
         ->set('date', now()->toDateString())
-        ->set('reason', 'Terlambat karena macet.')
+        ->set('reason', 'Dijemput lebih awal.')
         ->call('save')
         ->assertHasErrors('type');
 

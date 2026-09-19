@@ -50,7 +50,7 @@ new #[Title('Input Izin Manual')] class extends Component
      */
     public function types(): array
     {
-        return PermitType::cases();
+        return PermitType::selectable();
     }
 
     /**
@@ -60,7 +60,7 @@ new #[Title('Input Izin Manual')] class extends Component
     {
         return [
             'student_id' => ['required', Rule::exists('students', 'id')],
-            'type' => ['required', Rule::enum(PermitType::class)],
+            'type' => ['required', Rule::enum(PermitType::class)->only(PermitType::selectable())],
             'date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:1000'],
             'note' => ['nullable', 'string', 'max:255'],
