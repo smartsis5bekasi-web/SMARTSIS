@@ -26,6 +26,22 @@ Schedule::command('attendance:remind')
     ->dailyAt('06:00')
     ->withoutOverlapping();
 
+// Put every student who ended the school day with no attendance at all on the
+// books as "Menunggu Konfirmasi" for a teacher to confirm (alpha/sakit/izin).
+// Hourly so it catches the day as soon as the configured check-out time
+// passes; the command itself waits for that time and skips holidays.
+Schedule::command('attendance:mark-pending')
+    ->weekdays()
+    ->hourly()
+    ->withoutOverlapping();
+
+// A pending day no teacher confirmed within the configured number of school
+// days (Pengaturan Absensi, default 3) becomes Alpha and loses the alpha
+// points. Hourly and idempotent, so a missed run is simply caught up.
+Schedule::command('attendance:escalate-pending')
+    ->hourly()
+    ->withoutOverlapping();
+
 // One reminder per student per school day adds up fast, and a read one is of
 // no use after the day it arrived. Drop anything read over a month ago.
 Schedule::call(function (): void {

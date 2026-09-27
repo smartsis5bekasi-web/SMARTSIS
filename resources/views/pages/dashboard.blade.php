@@ -107,6 +107,9 @@ new #[Title('Dashboard')] class extends Component
             in_array($this->role(), [UserRole::GuruPiket, UserRole::GuruMapel], true) => [
                 ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
                 ['label' => 'Total Kelas', 'value' => Classroom::count(), 'icon' => 'building-library'],
+                ...(auth()->user()->can(Permission::ManageAttendance->value)
+                    ? [['label' => 'Absensi Menunggu Konfirmasi', 'value' => $this->pendingAttendanceCount(), 'icon' => 'clock']]
+                    : []),
             ],
             default => [
                 ['label' => 'Total Siswa', 'value' => Student::count(), 'icon' => 'users'],
@@ -276,7 +279,7 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Attendance status mix (hadir/terlambat/izin/sakit/alpha) for the
+     * Attendance status mix (hadir/terlambat/izin/sakit/alpha/pending) for the
      * current month.
      *
      * @return array<int, array{label: string, value: int, color: string}>
@@ -299,6 +302,7 @@ new #[Title('Dashboard')] class extends Component
             AttendanceStatus::Izin->value => 'bg-blue-500',
             AttendanceStatus::Sakit->value => 'bg-purple-500',
             AttendanceStatus::Alpha->value => 'bg-red-500',
+            AttendanceStatus::Pending->value => 'bg-gray-400',
         ];
 
         return collect(AttendanceStatus::cases())
@@ -515,7 +519,22 @@ new #[Title('Dashboard')] class extends Component
             ['label' => 'Kelas', 'value' => $class?->name ?? '—', 'icon' => 'building-library'],
             ['label' => 'Jumlah Siswa', 'value' => $class?->students_count ?? 0, 'icon' => 'users'],
             ['label' => 'Rata-rata Poin', 'value' => (int) round((float) Student::whereIn('id', $studentIds)->avg('current_point')), 'icon' => 'chart-bar'],
+            ['label' => 'Absensi Menunggu Konfirmasi', 'value' => $this->pendingAttendanceCount(), 'icon' => 'clock'],
         ];
+    }
+
+    /**
+     * Days the end-of-day sweep left pending (no attendance, no keterangan)
+     * that still wait for a teacher to confirm, within the role's scope.
+     */
+    private function pendingAttendanceCount(): int
+    {
+        $studentIds = $this->scopedStudentIds();
+
+        return Attendance::query()
+            ->where('status', AttendanceStatus::Pending)
+            ->when($studentIds !== null, fn ($query) => $query->whereIn('student_id', $studentIds))
+            ->count();
     }
 }; ?>
 

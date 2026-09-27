@@ -39,6 +39,11 @@ class AttendanceException extends RuntimeException
         return new self(__('Status :status tidak dapat diajukan sendiri.', ['status' => $status->label()]));
     }
 
+    public static function notAssignable(AttendanceStatus $status): self
+    {
+        return new self(__('Status :status tidak dapat dipilih secara manual.', ['status' => $status->label()]));
+    }
+
     public static function checkOutNotOpen(string $opensAt): self
     {
         return new self(__('Absensi pulang baru dibuka pukul :time.', ['time' => $opensAt]));

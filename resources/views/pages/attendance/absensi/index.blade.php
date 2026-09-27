@@ -107,11 +107,16 @@
 
         /**
          * Today's attendance record of the signed-in siswa (self-service view).
+         * The end-of-day pending placeholder does not count: the student can
+         * still scan in or declare sakit/izin over it.
          */
         #[Computed]
         public function todayAttendance(): ?Attendance
         {
-            return auth()->user()->student?->attendances()->onDate(now())->first();
+            return auth()->user()->student?->attendances()
+                ->onDate(now())
+                ->where('status', '!=', AttendanceStatus::Pending)
+                ->first();
         }
 
         /**
@@ -315,6 +320,16 @@
         }
 
         /**
+         * The statuses offered by the "Ubah Status" dropdown (never Pending).
+         *
+         * @return array<int, AttendanceStatus>
+         */
+        public function assignableStatuses(): array
+        {
+            return AttendanceStatus::assignable();
+        }
+
+        /**
          * The children selectable by an Orang Tua account (the personal view's
          * subject; a Siswa account always views itself).
          *
@@ -428,13 +443,15 @@
             $newStatus = AttendanceStatus::tryFrom($status);
             $date = $this->selectedDate();
 
-            if ($newStatus === null || $date->isFuture()) {
+            if ($newStatus === null || $newStatus->isPending() || $date->isFuture()) {
                 $this->dispatch('swal', icon: 'error', title: __('Status atau tanggal tidak valid.'));
 
                 return;
             }
 
-            $student = Student::query()->findOrFail($studentId);
+            // Resolved through the same scope as the table, so a wali kelas
+            // granted this permission cannot reach another class by id.
+            $student = $this->scopedStudents()->findOrFail($studentId);
 
             app(RecordAttendance::class)->markStatus($student, $newStatus, auth()->user(), $date);
 
@@ -447,7 +464,8 @@
         }
 
         /**
-         * Mark every student without a record on the selected date as Alpha.
+         * Mark every student without a record — or still waiting for
+         * confirmation — on the selected date as Alpha.
          */
         public function markAbsentees(): void
         {
@@ -827,7 +845,10 @@
                                     <td class="py-3 px-4 tabular-nums">{{ $attendance->checked_in_at?->format('H:i') ?? '—' }}</td>
                                     <td class="py-3 px-4 tabular-nums">{{ $attendance->checked_out_at?->format('H:i') ?? '—' }}</td>
                                     <td class="py-3 px-4">
-                                        <x-attendance.status-badge :status="$attendance->status" />
+                                        <div class="flex flex-col items-start gap-1">
+                                            <x-attendance.status-badge :status="$attendance->status" />
+                                            <x-attendance.confirmation-hint :attendance="$attendance" :setting="$this->setting" />
+                                        </div>
                                     </td>
                                     <td class="py-3 px-4 text-sm text-gray-500">{{ $attendance->note ?? '—' }}</td>
                                 </tr>
@@ -846,7 +867,16 @@
             </div>
         @else
             {{-- ============ Daily monitor (staff) ============ --}}
-            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+            @if ($this->canManage() && ! $this->setting->deductsForAlpha())
+                <div class="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+                    <ion-icon name="warning-outline" class="text-2xl text-red-600"></ion-icon>
+                    <p class="flex-1 text-sm text-red-800">
+                        {{ __('Aturan Poin Alpha belum dipilih (atau nonaktif) di Pengaturan Absensi — status Alpha tidak akan memotong poin.') }}
+                    </p>
+                </div>
+            @endif
+
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7">
                 @foreach ($this->statuses() as $case)
                     <div class="rounded-xl bg-white p-4 drop-shadow-lg">
                         <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ $case->label() }}</p>
@@ -885,7 +915,7 @@
                         <button type="button" x-data
                             @click="confirmDelete(() => $wire.markAbsentees(), {
                                 title: @js(__('Tandai Alpha?')),
-                                text: @js(__('Semua siswa yang belum tercatat pada tanggal terpilih akan ditandai Alpha dan poinnya dikurangi otomatis.')),
+                                text: @js(__('Semua siswa yang belum tercatat atau masih Menunggu Konfirmasi pada tanggal terpilih akan ditandai Alpha dan poinnya dikurangi otomatis.')),
                                 confirmButtonText: @js(__('Ya, tandai')),
                             })"
                             class="ml-auto inline-flex items-center gap-2 rounded-md bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100">
@@ -931,7 +961,10 @@
                                     <td class="py-3 px-4 tabular-nums">{{ $attendance?->checked_out_at?->format('H:i') ?? '—' }}</td>
                                     <td class="py-3 px-4">
                                         @if ($attendance !== null)
-                                            <x-attendance.status-badge :status="$attendance->status" />
+                                            <div class="flex flex-col items-start gap-1">
+                                                <x-attendance.status-badge :status="$attendance->status" />
+                                                <x-attendance.confirmation-hint :attendance="$attendance" :setting="$this->setting" />
+                                            </div>
                                         @else
                                             <span class="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
                                                 {{ __('Belum Absen') }}
@@ -942,8 +975,10 @@
                                         <td class="py-3 px-4 text-center">
                                             <select wire:change="markStatus({{ $student->id }}, $event.target.value)"
                                                 class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-500">
-                                                <option value="" @selected($attendance === null)>{{ __('Pilih…') }}</option>
-                                                @foreach ($this->statuses() as $case)
+                                                <option value="" @selected($attendance === null || $attendance->status->isPending())>
+                                                    {{ $attendance?->status->isPending() ? __('Konfirmasi…') : __('Pilih…') }}
+                                                </option>
+                                                @foreach ($this->assignableStatuses() as $case)
                                                     <option value="{{ $case->value }}" @selected($attendance?->status === $case)>{{ $case->label() }}</option>
                                                 @endforeach
                                             </select>

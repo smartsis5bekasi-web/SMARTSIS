@@ -2,7 +2,7 @@
     'status', // App\Enums\AttendanceStatus
 ])
 
-{{-- Colored pill for a daily attendance status (hadir/terlambat/izin/sakit/alpha). --}}
+{{-- Colored pill for a daily attendance status (hadir/terlambat/izin/sakit/alpha/pending). --}}
 <span @class([
     'inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold',
     'bg-green-100 text-green-700' => $status === App\Enums\AttendanceStatus::Hadir,
@@ -10,4 +10,5 @@
     'bg-blue-100 text-blue-700' => $status === App\Enums\AttendanceStatus::Izin,
     'bg-purple-100 text-purple-700' => $status === App\Enums\AttendanceStatus::Sakit,
     'bg-red-100 text-red-700' => $status === App\Enums\AttendanceStatus::Alpha,
+    'bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-300' => $status === App\Enums\AttendanceStatus::Pending,
 ])>{{ $status->label() }}</span>

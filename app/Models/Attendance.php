@@ -37,6 +37,7 @@ use Illuminate\Support\Str;
  * @property string|null $reason
  * @property Carbon|null $verified_at
  * @property int|null $verified_by
+ * @property Carbon|null $escalated_at
  */
 class Attendance extends Model
 {
@@ -65,6 +66,7 @@ class Attendance extends Model
         'reason',
         'verified_at',
         'verified_by',
+        'escalated_at',
     ];
 
     /**
@@ -148,6 +150,24 @@ class Attendance extends Model
     }
 
     /**
+     * Whether the system turned this day into Alpha on its own because no
+     * teacher confirmed it in time ("Alpha otomatis").
+     */
+    public function isEscalated(): bool
+    {
+        return $this->escalated_at !== null;
+    }
+
+    /**
+     * An automatic Alpha no teacher has looked at yet — still worth a check,
+     * since the student may simply have been sick without anyone noting it.
+     */
+    public function needsEscalationReview(): bool
+    {
+        return $this->isEscalated() && ! $this->isVerified();
+    }
+
+    /**
      * Mark the record as confirmed by a member of staff.
      */
     public function markVerified(?User $by = null): void
@@ -159,26 +179,29 @@ class Attendance extends Model
     }
 
     /**
-     * Reverse the net point effect of this record (used before a manual
-     * status correction) so the balance and audit trail stay consistent.
+     * Reverse the net point effect of this record (used before a status
+     * correction) so the balance and audit trail stay consistent.
      *
-     * Each attendance carries at most one active penalty at a time, so the
-     * net of its logs is either zero (nothing to reverse) or the active
-     * penalty entry.
+     * Works from the sum of every log the record ever produced, so however
+     * many times a teacher flips it (alpha → sakit → alpha → izin …) the
+     * student ends up exactly where the final status puts them.
      */
     public function reversePoints(?User $by = null, ?string $note = null): void
     {
+        if (! $this->exists) {
+            return;
+        }
+
         $net = (int) $this->pointLogs()->sum('delta');
 
         if ($net === 0) {
             return;
         }
 
-        $log = $this->pointLogs()->where('delta', $net)->latest('id')->first();
+        $log = $this->pointLogs()->where('delta', $net)->latest('id')->first()
+            ?? $this->pointLogs()->latest('id')->first();
 
-        if ($log !== null) {
-            app(ApplyPointAdjustment::class)->reverse($log, $by, $note);
-        }
+        app(ApplyPointAdjustment::class)->reverse($log, $by, $note, -$net);
     }
 
     /**
@@ -252,6 +275,7 @@ class Attendance extends Model
             'check_out_longitude' => 'float',
             'check_out_accuracy' => 'integer',
             'verified_at' => 'datetime',
+            'escalated_at' => 'datetime',
         ];
     }
 }

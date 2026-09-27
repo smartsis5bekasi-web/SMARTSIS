@@ -1,9 +1,11 @@
 <?php
 
+use App\Actions\Attendance\RecordAttendance;
 use App\Enums\AttendanceStatus;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\Attendance;
+use App\Models\AttendanceSetting;
 use App\Models\Classroom;
 use App\Models\Student;
 use Carbon\CarbonInterface;
@@ -69,6 +71,79 @@ new #[Title('Riwayat Absen')] class extends Component {
     }
 
     /**
+     * The statuses a pending (or unverified sakit/izin) day can be settled as.
+     *
+     * @return array<int, AttendanceStatus>
+     */
+    public function assignableStatuses(): array
+    {
+        return AttendanceStatus::assignable();
+    }
+
+    /**
+     * Whether a manager should decide this record from the table: a day the
+     * sweep left pending, a sakit/izin whose proof has not been checked, or
+     * an automatic Alpha nobody has looked at yet.
+     */
+    public function needsDecision(Attendance $attendance): bool
+    {
+        return $attendance->status->isPending()
+            || $attendance->needsEscalationReview()
+            || ($attendance->status->isSelfDeclarable() && ! $attendance->isVerified());
+    }
+
+    #[Computed]
+    public function setting(): AttendanceSetting
+    {
+        return AttendanceSetting::current();
+    }
+
+    /**
+     * Automatic Alphas no teacher has checked yet, across every month.
+     */
+    #[Computed]
+    public function escalatedCount(): int
+    {
+        return Attendance::query()
+            ->whereIn('student_id', $this->scopedStudents()->select('id'))
+            ->whereNotNull('escalated_at')
+            ->whereNull('verified_at')
+            ->count();
+    }
+
+    /**
+     * Jump the table to every automatic Alpha, whichever month it fell in.
+     */
+    public function showEscalated(): void
+    {
+        $this->month = '';
+        $this->status = 'auto';
+        $this->resetPage();
+    }
+
+    /**
+     * Days still waiting for a teacher's confirmation, across every month.
+     */
+    #[Computed]
+    public function pendingCount(): int
+    {
+        return Attendance::query()
+            ->whereIn('student_id', $this->scopedStudents()->select('id'))
+            ->where('status', AttendanceStatus::Pending)
+            ->count();
+    }
+
+    /**
+     * Jump the table to every pending day, whichever month it fell in.
+     */
+    public function showPending(): void
+    {
+        $this->month = '';
+        $this->status = AttendanceStatus::Pending->value;
+        $this->resetPage();
+    }
+
+    /**
      * @return Collection<int, Classroom>
      */
     #[Computed]
@@ -94,7 +169,8 @@ new #[Title('Riwayat Absen')] class extends Component {
                     $month->copy()->endOfMonth()->toDateString(),
                 ]);
             })
-            ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
+            ->when($this->status === 'auto', fn (Builder $query) => $query->whereNotNull('escalated_at'))
+            ->when($this->status !== '' && $this->status !== 'auto', fn (Builder $query) => $query->where('status', $this->status))
             ->when($this->search !== '', fn (Builder $query) => $query->whereHas(
                 'student',
                 fn (Builder $inner) => $inner
@@ -163,11 +239,50 @@ new #[Title('Riwayat Absen')] class extends Component {
             ->whereIn('student_id', $this->scopedStudents()->select('id'))
             ->findOrFail($attendanceId);
 
-        app(\App\Actions\Attendance\RecordAttendance::class)->verify($attendance, auth()->user());
+        app(RecordAttendance::class)->verify($attendance, auth()->user());
 
-        unset($this->records);
+        unset($this->records, $this->escalatedCount);
 
         $this->dispatch('swal', icon: 'success', title: __('Absensi diverifikasi.'));
+    }
+
+    /**
+     * Settle a pending day (or overrule an unverified sakit/izin) as the
+     * chosen status. Confirming Alpha applies the alpha point rule; picking
+     * the status a sakit/izin already has simply verifies it.
+     */
+    public function resolve(int $attendanceId, string $status): void
+    {
+        abort_unless($this->canManage(), 403);
+
+        $newStatus = AttendanceStatus::tryFrom($status);
+
+        if ($newStatus === null || $newStatus->isPending()) {
+            $this->dispatch('swal', icon: 'error', title: __('Status tidak valid.'));
+
+            return;
+        }
+
+        $attendance = Attendance::query()
+            ->with('student')
+            ->whereIn('student_id', $this->scopedStudents()->select('id'))
+            ->findOrFail($attendanceId);
+
+        $engine = app(RecordAttendance::class);
+
+        if ($attendance->status === $newStatus) {
+            $engine->verify($attendance, auth()->user());
+        } else {
+            $engine->markStatus($attendance->student, $newStatus, auth()->user(), $attendance->date);
+        }
+
+        unset($this->records, $this->pendingCount, $this->escalatedCount);
+
+        $this->dispatch('swal', icon: 'success', title: __(':name pada :date dikonfirmasi :status.', [
+            'name' => $attendance->student->name,
+            'date' => $attendance->date->translatedFormat('d M Y'),
+            'status' => $newStatus->label(),
+        ]));
     }
 
     private function selectedMonth(): CarbonInterface
@@ -210,6 +325,47 @@ new #[Title('Riwayat Absen')] class extends Component {
         </x-slot:actions>
     </x-ui.page-header>
 
+    @if ($this->canManage() && ! $this->setting->deductsForAlpha())
+        <div class="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
+            <ion-icon name="warning-outline" class="text-2xl text-red-600"></ion-icon>
+            <p class="flex-1 text-sm text-red-800">
+                {{ __('Aturan Poin Alpha belum dipilih (atau nonaktif) di Pengaturan Absensi — status Alpha tidak akan memotong poin.') }}
+            </p>
+            <x-ui.button variant="secondary" icon="settings-outline" :href="route('attendance.absensi.settings')" wire:navigate>
+                {{ __('Pengaturan') }}
+            </x-ui.button>
+        </div>
+    @endif
+
+    @if ($this->canManage() && $this->pendingCount > 0)
+        <div class="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <ion-icon name="alert-circle-outline" class="text-2xl text-amber-600"></ion-icon>
+            <p class="flex-1 text-sm text-amber-800">
+                {{ __(':count absensi siswa menunggu konfirmasi — siswa tidak absen dan belum ada keterangan. Tentukan Alpha, Sakit, atau Izin.', ['count' => $this->pendingCount]) }}
+                @if ($this->setting->autoAlphaEnabled())
+                    {{ __('Yang tidak dikonfirmasi dalam :days hari sekolah otomatis menjadi Alpha.', ['days' => $this->setting->pending_alpha_after_days]) }}
+                @endif
+            </p>
+            <button type="button" wire:click="showPending"
+                class="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700">
+                {{ __('Tampilkan') }}
+            </button>
+        </div>
+    @endif
+
+    @if ($this->canManage() && $this->escalatedCount > 0)
+        <div class="flex flex-wrap items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-5 py-4">
+            <ion-icon name="flash-outline" class="text-2xl text-orange-600"></ion-icon>
+            <p class="flex-1 text-sm text-orange-800">
+                {{ __(':count Alpha otomatis belum dicek guru. Pilih Alpha untuk menyetujui, atau ubah ke Sakit/Izin — poin siswa dikembalikan otomatis.', ['count' => $this->escalatedCount]) }}
+            </p>
+            <button type="button" wire:click="showEscalated"
+                class="rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-700">
+                {{ __('Tampilkan') }}
+            </button>
+        </div>
+    @endif
+
     <div class="flex-col rounded-xl bg-white p-6 drop-shadow-lg">
         <div class="mb-4 flex flex-wrap items-center gap-3">
             <input type="month" wire:model.live="month"
@@ -221,6 +377,7 @@ new #[Title('Riwayat Absen')] class extends Component {
                 @foreach ($this->statuses() as $case)
                     <option value="{{ $case->value }}">{{ $case->label() }}</option>
                 @endforeach
+                <option value="auto">{{ __('Alpha Otomatis') }}</option>
             </select>
 
             @if ($this->isMonitoring())
@@ -262,7 +419,10 @@ new #[Title('Riwayat Absen')] class extends Component {
                             <td class="py-3 px-4 font-semibold">{{ $attendance->student->name }}</td>
                             <td class="py-3 px-4">{{ $attendance->student->classroom?->name ?? '—' }}</td>
                             <td class="py-3 px-4">
-                                <x-attendance.status-badge :status="$attendance->status" />
+                                <div class="flex flex-col items-start gap-1">
+                                    <x-attendance.status-badge :status="$attendance->status" />
+                                    <x-attendance.confirmation-hint :attendance="$attendance" :setting="$this->setting" />
+                                </div>
                             </td>
                             <td class="py-3 px-4">
                                 @if ($attendance->checked_in_at)
@@ -283,7 +443,7 @@ new #[Title('Riwayat Absen')] class extends Component {
                             <td class="py-3 px-4 text-center">
                                 <div class="flex items-center justify-center gap-2">
                                     <x-attendance.verified-badge :attendance="$attendance" />
-                                    @if ($this->canManage() && ! $attendance->isVerified())
+                                    @if ($this->canManage() && ! $attendance->isVerified() && ! $attendance->status->isPending())
                                         <button type="button" wire:click="verify({{ $attendance->id }})"
                                             class="rounded-md bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 transition hover:bg-green-100">
                                             {{ __('Verifikasi') }}
@@ -310,15 +470,28 @@ new #[Title('Riwayat Absen')] class extends Component {
                                 </div>
                             </td>
                             <td class="py-3 px-4 text-center">
-                                @if ($attendance->hasLocation())
-                                    <button type="button" wire:click="showLocation({{ $attendance->id }})"
-                                        class="inline-flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-700">
-                                        <ion-icon name="location-outline" class="text-base"></ion-icon>
-                                        {{ __('Lihat Posisi') }}
-                                    </button>
-                                @else
-                                    <span class="text-xs text-gray-400">{{ __('Tanpa lokasi') }}</span>
-                                @endif
+                                <div class="flex items-center justify-center gap-2">
+                                    @if ($this->canManage() && $this->needsDecision($attendance))
+                                        <select wire:change="resolve({{ $attendance->id }}, $event.target.value)"
+                                            aria-label="{{ __('Konfirmasi status :name', ['name' => $attendance->student->name]) }}"
+                                            class="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-800 focus:outline-none focus:ring-1 focus:ring-amber-500">
+                                            <option value="" selected>{{ __('Konfirmasi…') }}</option>
+                                            @foreach ($this->assignableStatuses() as $case)
+                                                <option value="{{ $case->value }}">{{ $case->label() }}</option>
+                                            @endforeach
+                                        </select>
+                                    @endif
+
+                                    @if ($attendance->hasLocation())
+                                        <button type="button" wire:click="showLocation({{ $attendance->id }})"
+                                            class="inline-flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-700">
+                                            <ion-icon name="location-outline" class="text-base"></ion-icon>
+                                            {{ __('Lihat Posisi') }}
+                                        </button>
+                                    @elseif (! ($this->canManage() && $this->needsDecision($attendance)))
+                                        <span class="text-xs text-gray-400">{{ __('Tanpa lokasi') }}</span>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                     @empty

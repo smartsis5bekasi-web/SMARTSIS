@@ -24,6 +24,8 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
     public ?int $alpha_rule_id = null;
 
+    public int $pending_alpha_after_days = 3;
+
     public function mount(): void
     {
         $this->setting = AttendanceSetting::current();
@@ -33,6 +35,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
         $this->ignore_schedule = $this->setting->ignore_schedule;
         $this->late_rule_id = $this->setting->late_rule_id;
         $this->alpha_rule_id = $this->setting->alpha_rule_id;
+        $this->pending_alpha_after_days = $this->setting->pending_alpha_after_days;
     }
 
     /**
@@ -64,6 +67,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
             'ignore_schedule' => ['boolean'],
             'late_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
             'alpha_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
+            'pending_alpha_after_days' => ['required', 'integer', 'min:0', 'max:30'],
         ];
     }
 
@@ -150,7 +154,25 @@ new #[Title('Pengaturan Absensi')] class extends Component {
                     @endforeach
                 </select>
                 <span class="mt-1 text-xs text-gray-400">{{ __('Diterapkan otomatis saat siswa ditandai Alpha.') }}</span>
+                @if ($alpha_rule_id === null)
+                    <span class="mt-1 inline-flex items-center gap-1.5 text-xs font-semibold text-red-600">
+                        <ion-icon name="warning-outline" class="text-sm"></ion-icon>
+                        {{ __('Tanpa aturan ini, siswa yang Alpha tidak dikurangi poinnya.') }}
+                    </span>
+                @endif
                 @error('alpha_rule_id')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+
+            <div class="flex flex-col">
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Alpha Otomatis Setelah (hari sekolah)') }} <span class="text-red-500">*</span></label>
+                <input type="number" min="0" max="30" wire:model="pending_alpha_after_days"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                <span class="mt-1 text-xs text-gray-400">
+                    {{ __('Siswa yang tidak absen tercatat "Menunggu Konfirmasi". Jika guru belum mengonfirmasi dalam jumlah hari sekolah ini, status otomatis menjadi Alpha dan poin dikurangi — tetap bisa diubah setelahnya. Isi 0 untuk mematikan.') }}
+                </span>
+                @error('pending_alpha_after_days')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>

@@ -5,8 +5,13 @@
 {{-- Whether the record has been confirmed. Absensi does not match faces, so
      the GPS fix is what verifies a student's own scan; a scan without a
      location, and every self-declared sakit/izin, waits for a Guru Piket /
-     Wali Kelas instead. --}}
-@if ($attendance->isVerified())
+     Wali Kelas instead. A day the end-of-day sweep left pending has nothing
+     to verify yet — it waits for a teacher to confirm what happened. --}}
+@if ($attendance->status->isPending())
+    <span class="inline-flex items-center gap-1 text-gray-400" title="{{ __('Menunggu konfirmasi guru') }}">
+        <ion-icon name="time-outline" class="text-xl"></ion-icon>
+    </span>
+@elseif ($attendance->isVerified())
     <span class="inline-flex items-center gap-1 text-green-600" title="{{ __('Terverifikasi :time', ['time' => $attendance->verified_at->translatedFormat('d M Y H:i')]) }}">
         <ion-icon name="checkmark-circle" class="text-xl"></ion-icon>
     </span>

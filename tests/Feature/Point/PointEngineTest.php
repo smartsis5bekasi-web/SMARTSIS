@@ -35,11 +35,18 @@ test('the balance is clamped at zero', function () {
     $student = Student::factory()->create(['current_point' => 10]);
     $rule = PointRule::factory()->deduction()->create(['point' => 30]);
 
-    $log = app(ApplyPointAdjustment::class)->handle($student, $rule);
+    $engine = app(ApplyPointAdjustment::class);
+    $log = $engine->handle($student, $rule);
 
+    // The log records what actually moved, so taking it back later refunds
+    // the 10 points the student lost — not the rule's nominal 30.
     expect($student->fresh()->current_point)->toBe(0)
-        ->and($log->delta)->toBe(-30)
+        ->and($log->delta)->toBe(-10)
         ->and($log->balance_after)->toBe(0);
+
+    $engine->reverse($log);
+
+    expect($student->fresh()->current_point)->toBe(10);
 });
 
 test('reverse restores the balance and writes a compensating log', function () {

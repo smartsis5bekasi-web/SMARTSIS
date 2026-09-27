@@ -30,9 +30,10 @@ interface PointSourceVerified
     public function rule(): PointRule;
 
     /**
-     * The user who approved the record (recorded as the author of the log).
+     * The user who approved the record (recorded as the author of the log),
+     * or null when the system applied it on its own (e.g. an automatic Alpha).
      */
-    public function verifier(): User;
+    public function verifier(): ?User;
 
     /**
      * A human-readable note stored on the point log.

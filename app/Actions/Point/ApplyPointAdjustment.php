@@ -34,8 +34,12 @@ class ApplyPointAdjustment
         $log = DB::transaction(function () use ($student, $rule, $source, $note, $by): PointLog {
             $student = Student::query()->lockForUpdate()->findOrFail($student->id);
 
-            $delta = $rule->signedPoint();
-            $balance = max(0, $student->current_point + $delta);
+            $balance = max(0, $student->current_point + $rule->signedPoint());
+
+            // Log what actually moved, not the rule's nominal value: a balance
+            // floored at 0 only lost what it had, and reversing the entry
+            // later must give back exactly that — no more.
+            $delta = $balance - $student->current_point;
 
             $student->update(['current_point' => $balance]);
 
@@ -58,14 +62,18 @@ class ApplyPointAdjustment
     /**
      * Reverse a previously applied adjustment (e.g. an approval was revoked),
      * writing a compensating log entry so the audit trail stays intact.
+     *
+     * @param  int|null  $amount  the change to write instead of the exact
+     *                            opposite of $log (used to cancel the net
+     *                            effect of a source's whole history at once)
      */
-    public function reverse(PointLog $log, ?User $by = null, ?string $note = null): PointLog
+    public function reverse(PointLog $log, ?User $by = null, ?string $note = null, ?int $amount = null): PointLog
     {
-        $reversal = DB::transaction(function () use ($log, $by, $note): PointLog {
+        $reversal = DB::transaction(function () use ($log, $by, $note, $amount): PointLog {
             $student = Student::query()->lockForUpdate()->findOrFail($log->student_id);
 
-            $delta = -$log->delta;
-            $balance = max(0, $student->current_point + $delta);
+            $balance = max(0, $student->current_point + ($amount ?? -$log->delta));
+            $delta = $balance - $student->current_point;
 
             $student->update(['current_point' => $balance]);
 

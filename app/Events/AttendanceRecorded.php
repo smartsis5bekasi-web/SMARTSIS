@@ -22,7 +22,7 @@ class AttendanceRecorded implements PointSourceVerified
 
     public function __construct(
         public Attendance $attendance,
-        public User $recorder,
+        public ?User $recorder,
     ) {}
 
     public function source(): Model
@@ -40,13 +40,17 @@ class AttendanceRecorded implements PointSourceVerified
         return $this->attendance->pointRule;
     }
 
-    public function verifier(): User
+    public function verifier(): ?User
     {
         return $this->recorder;
     }
 
     public function note(): string
     {
+        if ($this->attendance->isEscalated()) {
+            return __('Absensi: :status otomatis — tidak dikonfirmasi guru', ['status' => $this->attendance->status->label()]);
+        }
+
         return __('Absensi: :status', ['status' => $this->attendance->status->label()]);
     }
 }

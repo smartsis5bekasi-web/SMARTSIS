@@ -8,6 +8,7 @@ use Database\Factories\AttendanceSettingFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $late_after
  * @property string $check_out_after
  * @property bool $ignore_schedule
+ * @property int $pending_alpha_after_days
  * @property int|null $late_rule_id
  * @property int|null $alpha_rule_id
  */
@@ -28,6 +30,7 @@ class AttendanceSetting extends Model
         'late_after',
         'check_out_after',
         'ignore_schedule',
+        'pending_alpha_after_days',
         'late_rule_id',
         'alpha_rule_id',
     ];
@@ -43,6 +46,7 @@ class AttendanceSetting extends Model
             'late_after' => '07:30:00',
             'check_out_after' => '15:00:00',
             'ignore_schedule' => false,
+            'pending_alpha_after_days' => 3,
         ]);
     }
 
@@ -95,6 +99,38 @@ class AttendanceSetting extends Model
     }
 
     /**
+     * Whether an unconfirmed "Menunggu Konfirmasi" day turns into Alpha on
+     * its own once the confirmation window runs out.
+     */
+    public function autoAlphaEnabled(): bool
+    {
+        return $this->pending_alpha_after_days > 0;
+    }
+
+    /**
+     * The last school day a teacher can confirm a pending day that fell on
+     * the given date; it becomes Alpha the day after. Weekends do not count,
+     * so a Friday absence is not escalated before anyone is back at school.
+     */
+    public function pendingDeadline(CarbonInterface $date): ?Carbon
+    {
+        if (! $this->autoAlphaEnabled()) {
+            return null;
+        }
+
+        return Carbon::parse($date)->startOfDay()->addWeekdays($this->pending_alpha_after_days);
+    }
+
+    /**
+     * Whether marking a student Alpha actually deducts points. It does not
+     * when no rule is linked here or the linked rule has been deactivated.
+     */
+    public function deductsForAlpha(): bool
+    {
+        return $this->ruleFor(AttendanceStatus::Alpha) !== null;
+    }
+
+    /**
      * The active point rule to apply for the given status, if any.
      */
     public function ruleFor(AttendanceStatus $status): ?PointRule
@@ -115,6 +151,7 @@ class AttendanceSetting extends Model
     {
         return [
             'ignore_schedule' => 'boolean',
+            'pending_alpha_after_days' => 'integer',
         ];
     }
 

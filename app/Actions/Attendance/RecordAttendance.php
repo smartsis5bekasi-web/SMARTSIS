@@ -13,12 +13,15 @@ use App\Models\Student;
 use App\Models\User;
 use App\Support\AttendanceCapture;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The single entry point for every attendance mutation (PRD F-09/F-10/F-11):
- * face check-in/check-out from the kiosk, manual status corrections, and the
- * end-of-day alpha sweep. Late and alpha statuses drive the point engine
- * through {@see AttendanceRecorded}.
+ * face check-in/check-out from the kiosk, manual status corrections, the
+ * end-of-day pending sweep, and the alpha sweep. Late and alpha statuses drive
+ * the point engine through {@see AttendanceRecorded}.
  */
 class RecordAttendance
 {
@@ -36,11 +39,7 @@ class RecordAttendance
         ?AttendanceCapture $capture = null,
     ): Attendance {
         $now = now();
-        $existing = $student->attendances()->onDate($now)->first();
-
-        if ($existing !== null) {
-            throw AttendanceException::alreadyRecorded($existing);
-        }
+        $existing = $this->unresolvedRecordFor($student, $now);
 
         $setting = AttendanceSetting::current();
 
@@ -67,7 +66,9 @@ class RecordAttendance
         // without one.
         $verified = $method !== 'self' || $capture->hasFix();
 
-        $attendance = $student->attendances()->create([
+        $attendance = $existing ?? $student->attendances()->make();
+
+        $attendance->fill([
             'date' => $now->toDateString(),
             'status' => $status,
             'point_rule_id' => $rule?->id,
@@ -78,7 +79,7 @@ class RecordAttendance
             'verified_at' => $verified ? $now : null,
             'verified_by' => $verified ? $by->id : null,
             ...$capture->checkInAttributes(),
-        ]);
+        ])->save();
 
         if ($rule !== null) {
             AttendanceRecorded::dispatch($attendance, $by);
@@ -172,15 +173,11 @@ class RecordAttendance
         }
 
         $now = now();
-        $existing = $student->attendances()->onDate($now)->first();
-
-        if ($existing !== null) {
-            throw AttendanceException::alreadyRecorded($existing);
-        }
+        $attendance = $this->unresolvedRecordFor($student, $now) ?? $student->attendances()->make();
 
         $capture ??= new AttendanceCapture;
 
-        return $student->attendances()->create([
+        $attendance->fill([
             'date' => $now->toDateString(),
             'status' => $status,
             'point_rule_id' => AttendanceSetting::current()->ruleFor($status)?->id,
@@ -193,7 +190,27 @@ class RecordAttendance
             'check_in_latitude' => $capture->latitude,
             'check_in_longitude' => $capture->longitude,
             'check_in_accuracy' => $capture->accuracy,
-        ]);
+        ])->save();
+
+        return $attendance;
+    }
+
+    /**
+     * Today's record when it is only the sweep's pending placeholder, which a
+     * late scan or declaration replaces. Anything else means the day is
+     * already settled.
+     *
+     * @throws AttendanceException when the day already has a real record
+     */
+    private function unresolvedRecordFor(Student $student, CarbonInterface $date): ?Attendance
+    {
+        $existing = $student->attendances()->onDate($date)->first();
+
+        if ($existing !== null && ! $existing->status->isPending()) {
+            throw AttendanceException::alreadyRecorded($existing);
+        }
+
+        return $existing;
     }
 
     /**
@@ -201,7 +218,9 @@ class RecordAttendance
      */
     public function verify(Attendance $attendance, User $by): Attendance
     {
-        if (! $attendance->isVerified()) {
+        // A pending day has nothing to verify — it has to be confirmed as a
+        // real status through markStatus() instead.
+        if (! $attendance->isVerified() && ! $attendance->status->isPending()) {
             $attendance->markVerified($by);
         }
 
@@ -211,7 +230,8 @@ class RecordAttendance
     /**
      * Manually set a student's status for a date (izin/sakit/alpha or a
      * correction). Reverses a previously applied penalty before applying the
-     * rule that matches the new status, so corrections never double-count.
+     * rule that matches the new status, so corrections never double-count —
+     * including taking back the points of an automatic Alpha.
      */
     public function markStatus(
         Student $student,
@@ -220,6 +240,10 @@ class RecordAttendance
         ?CarbonInterface $date = null,
         ?string $note = null,
     ): Attendance {
+        if ($status->isPending()) {
+            throw AttendanceException::notAssignable($status);
+        }
+
         $date ??= now();
 
         /** @var Attendance $attendance */
@@ -230,37 +254,111 @@ class RecordAttendance
             return $attendance;
         }
 
-        $attendance->reversePoints($by, __('Koreksi absensi menjadi :status', ['status' => $status->label()]));
-
-        $rule = AttendanceSetting::current()->ruleFor($status);
-
-        // Manual corrections honor an approved izin terlambat the same way
-        // the kiosk check-in does.
-        if ($status === AttendanceStatus::Terlambat && Permit::approvedFor($student, PermitType::Terlambat, $date)) {
-            $rule = null;
-        }
-
-        $attendance->fill([
-            'status' => $status,
-            'point_rule_id' => $rule?->id,
+        return $this->settle($attendance, $status, $by, $date, [
             'method' => 'manual',
             'recorded_by' => $by->id,
             'note' => $note,
-            // A staff decision is the verification.
+            // A staff decision is the verification, and replaces any
+            // automatic Alpha the system applied earlier.
             'verified_at' => now(),
             'verified_by' => $by->id,
-        ])->save();
-
-        if ($rule !== null) {
-            AttendanceRecorded::dispatch($attendance, $by);
-        }
-
-        return $attendance;
+            'escalated_at' => null,
+        ]);
     }
 
     /**
-     * Mark every student without an attendance record on the date as Alpha
-     * (the end-of-day sweep behind "pengurangan poin otomatis: alpha").
+     * Turn every "Menunggu Konfirmasi" day whose confirmation window has run
+     * out into Alpha, applying the alpha point rule. The record is labelled
+     * "Alpha otomatis" and stays unverified, so a teacher can still correct
+     * it later — {@see markStatus()} then gives the points back.
+     *
+     * @return int the number of days escalated
+     */
+    public function escalatePending(?CarbonInterface $today = null): int
+    {
+        $setting = AttendanceSetting::current();
+
+        if (! $setting->autoAlphaEnabled()) {
+            return 0;
+        }
+
+        $today = Carbon::parse($today ?? now())->startOfDay();
+        $escalated = 0;
+
+        Attendance::query()
+            ->where('status', AttendanceStatus::Pending)
+            // Weekday deadlines are never earlier than calendar ones, so this
+            // only narrows the scan; the exact check happens per record.
+            ->whereDate('date', '<', $today->copy()->subDays($setting->pending_alpha_after_days)->toDateString())
+            ->chunkById(100, function ($records) use ($setting, $today, &$escalated): void {
+                foreach ($records as $record) {
+                    if ($setting->pendingDeadline($record->date)->gte($today)) {
+                        continue;
+                    }
+
+                    $escalated += (int) DB::transaction(function () use ($record, $setting): bool {
+                        // A teacher may have confirmed it since the chunk was read.
+                        $attendance = Attendance::query()->with('student')->lockForUpdate()->find($record->id);
+
+                        if ($attendance === null || ! $attendance->status->isPending()) {
+                            return false;
+                        }
+
+                        $this->settle($attendance, AttendanceStatus::Alpha, null, $attendance->date, [
+                            'method' => 'system',
+                            'recorded_by' => null,
+                            'note' => __('Alpha otomatis — tidak dikonfirmasi guru dalam :days hari sekolah.', ['days' => $setting->pending_alpha_after_days]),
+                            'verified_at' => null,
+                            'verified_by' => null,
+                            'escalated_at' => now(),
+                        ]);
+
+                        return true;
+                    });
+                }
+            });
+
+        return $escalated;
+    }
+
+    /**
+     * Move a record to a new status: take back whatever its previous status
+     * cost, then apply the rule of the new one — atomically, so a failure in
+     * between never leaves the balance half-corrected.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function settle(Attendance $attendance, AttendanceStatus $status, ?User $by, CarbonInterface $date, array $attributes): Attendance
+    {
+        return DB::transaction(function () use ($attendance, $status, $by, $date, $attributes): Attendance {
+            $attendance->reversePoints($by, __('Koreksi absensi menjadi :status', ['status' => $status->label()]));
+
+            $rule = AttendanceSetting::current()->ruleFor($status);
+
+            // Manual corrections honor an approved izin terlambat the same way
+            // the kiosk check-in does.
+            if ($status === AttendanceStatus::Terlambat && Permit::approvedFor($attendance->student, PermitType::Terlambat, $date)) {
+                $rule = null;
+            }
+
+            $attendance->fill([
+                'status' => $status,
+                'point_rule_id' => $rule?->id,
+                ...$attributes,
+            ])->save();
+
+            if ($rule !== null) {
+                AttendanceRecorded::dispatch($attendance, $by);
+            }
+
+            return $attendance;
+        });
+    }
+
+    /**
+     * Mark every student without a settled record on the date — no record at
+     * all, or only the sweep's pending placeholder — as Alpha (the manual
+     * "Tandai Alpha" bulk action behind "pengurangan poin otomatis: alpha").
      *
      * @return int the number of students marked
      */
@@ -269,8 +367,10 @@ class RecordAttendance
         $date ??= now();
         $marked = 0;
 
-        Student::query()
-            ->whereDoesntHave('attendances', fn ($query) => $query->whereDate('date', $date->toDateString()))
+        $this->attendingStudents()
+            ->whereDoesntHave('attendances', fn (Builder $query) => $query
+                ->whereDate('date', $date->toDateString())
+                ->where('status', '!=', AttendanceStatus::Pending))
             ->chunkById(100, function ($students) use ($by, $date, &$marked): void {
                 foreach ($students as $student) {
                     $this->markStatus($student, AttendanceStatus::Alpha, $by, $date);
@@ -279,5 +379,59 @@ class RecordAttendance
             });
 
         return $marked;
+    }
+
+    /**
+     * Write a Pending record for every student who ended the date with no
+     * attendance at all, so an absence is always on the books for a teacher
+     * to confirm as alpha, sakit, or izin. No points move until then.
+     *
+     * Students registered after the date are skipped, so backfilling an old
+     * day never blames someone who was not enrolled yet. Safe to run
+     * repeatedly — it only fills gaps.
+     *
+     * @return int the number of pending records written
+     */
+    public function markPending(?CarbonInterface $date = null): int
+    {
+        $date ??= now();
+        $day = $date->toDateString();
+        $written = 0;
+
+        $this->attendingStudents()
+            ->where(fn (Builder $query) => $query
+                ->whereNull('created_at')
+                ->orWhere('created_at', '<=', $date->copy()->endOfDay()))
+            ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('date', $day))
+            ->select('id')
+            ->chunkById(500, function ($students) use ($day, &$written): void {
+                $now = now();
+
+                $written += Attendance::query()->insertOrIgnore($students->map(fn (Student $student): array => [
+                    'student_id' => $student->id,
+                    'date' => $day,
+                    'status' => AttendanceStatus::Pending->value,
+                    'method' => 'system',
+                    'note' => __('Tidak ada absensi tercatat — menunggu konfirmasi guru.'),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->all());
+            });
+
+        return $written;
+    }
+
+    /**
+     * Students expected at school: everyone except those whose account has
+     * been deactivated (moved or left). A student with no login yet still
+     * attends through the kiosk, so a missing account does not exclude them.
+     *
+     * @return Builder<Student>
+     */
+    private function attendingStudents(): Builder
+    {
+        return Student::query()->where(fn (Builder $query) => $query
+            ->whereNull('user_id')
+            ->orWhereHas('user', fn (Builder $user) => $user->where('is_active', true)));
     }
 }

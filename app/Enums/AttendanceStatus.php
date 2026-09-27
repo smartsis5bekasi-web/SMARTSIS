@@ -5,6 +5,10 @@ namespace App\Enums;
 /**
  * Daily attendance statuses monitored by the Smart Attendance module
  * (PRD F-11 — hadir, terlambat, izin, sakit, alpha).
+ *
+ * {@see self::Pending} is the placeholder the end-of-day sweep writes for a
+ * student with no record at all, so the absence is never silently lost; it
+ * carries no points until a teacher confirms it as alpha, sakit, or izin.
  */
 enum AttendanceStatus: string
 {
@@ -13,6 +17,7 @@ enum AttendanceStatus: string
     case Izin = 'izin';
     case Sakit = 'sakit';
     case Alpha = 'alpha';
+    case Pending = 'pending';
 
     /**
      * The human-readable Indonesian label.
@@ -25,7 +30,27 @@ enum AttendanceStatus: string
             self::Izin => 'Izin',
             self::Sakit => 'Sakit',
             self::Alpha => 'Alpha',
+            self::Pending => 'Menunggu Konfirmasi',
         };
+    }
+
+    /**
+     * Whether the day still waits for a teacher to decide what happened.
+     */
+    public function isPending(): bool
+    {
+        return $this === self::Pending;
+    }
+
+    /**
+     * The statuses staff may assign by hand. Pending is only ever written by
+     * the end-of-day sweep, never chosen.
+     *
+     * @return array<int, self>
+     */
+    public static function assignable(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $status): bool => ! $status->isPending()));
     }
 
     /**

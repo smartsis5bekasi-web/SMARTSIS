@@ -99,6 +99,22 @@ class AttendanceFactory extends Factory
         ]);
     }
 
+    /**
+     * The placeholder the end-of-day sweep writes for a student with no
+     * record, waiting for a teacher to confirm it.
+     */
+    public function pending(): static
+    {
+        return $this->state(fn (): array => [
+            'status' => AttendanceStatus::Pending,
+            'checked_in_at' => null,
+            'method' => 'system',
+            'recorded_by' => null,
+            'verified_at' => null,
+            'verified_by' => null,
+        ]);
+    }
+
     public function checkedOut(): static
     {
         return $this->state(fn (): array => [

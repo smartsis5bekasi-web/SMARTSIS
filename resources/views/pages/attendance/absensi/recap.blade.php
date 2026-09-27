@@ -92,12 +92,13 @@ new #[Title('Rekap Absensi')] class extends Component {
 
     /**
      * Attendance rate: days present (hadir + terlambat) out of all recorded
-     * days in the month. Null when the student has no record yet.
+     * days in the month — a day still waiting for confirmation counts as a
+     * day missed. Null when the student has no record yet.
      */
     public function presenceRate(Student $student): ?int
     {
         $present = $student->hadir_count + $student->terlambat_count;
-        $total = $present + $student->izin_count + $student->sakit_count + $student->alpha_count;
+        $total = $present + $student->izin_count + $student->sakit_count + $student->alpha_count + $student->pending_count;
 
         return $total > 0 ? (int) round($present / $total * 100) : null;
     }
