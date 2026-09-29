@@ -29,6 +29,9 @@ class PermitFactory extends Factory
             'decided_by' => null,
             'decided_at' => null,
             'decision_note' => null,
+            'homeroom_approved_by' => null,
+            'homeroom_approved_at' => null,
+            'homeroom_note' => null,
         ];
     }
 
@@ -38,6 +41,17 @@ class PermitFactory extends Factory
             'status' => PermitStatus::Approved,
             'decided_by' => User::factory(),
             'decided_at' => now(),
+        ]);
+    }
+
+    /**
+     * The student's wali kelas has signed off as well.
+     */
+    public function homeroomApproved(): static
+    {
+        return $this->state(fn (): array => [
+            'homeroom_approved_by' => User::factory(),
+            'homeroom_approved_at' => now(),
         ]);
     }
 

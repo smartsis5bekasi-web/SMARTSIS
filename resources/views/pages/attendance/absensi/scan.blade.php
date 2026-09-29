@@ -32,7 +32,9 @@ new #[Title('Scan Absensi')] class extends Component {
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    @vite('resources/js/face-attendance.js')
+    @assets
+        @vite('resources/js/face-attendance.js')
+    @endassets
 
     <x-ui.page-header :title="__('Scan Absensi')"
         :subtitle="__('Arahkan wajah siswa ke kamera; nama dan kelas muncul lalu absensi tercatat otomatis.')">

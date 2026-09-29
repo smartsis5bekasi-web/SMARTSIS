@@ -19,10 +19,14 @@ test('a kiosk account lands on the kiosk after login instead of the dashboard', 
 test('a kiosk account opens the kiosk but nothing else', function () {
     $this->actingAs(userWithRole(UserRole::Kiosk));
 
-    $this->get(route('attendance.absensi.kiosk'))
+    $html = $this->get(route('attendance.absensi.kiosk'))
         ->assertOk()
         ->assertSee('SmartsisAttendance.start', false)
-        ->assertDontSee('Keluar Kiosk');
+        ->assertDontSee('Keluar Kiosk')
+        ->getContent();
+
+    // Served from <head> so a wire:navigate visit waits for it before x-init.
+    expect(str($html)->before('</head>')->contains('face-attendance'))->toBeTrue();
 
     $this->get(route('attendance.absensi'))->assertForbidden();
     $this->get(route('master-data.students.index'))->assertForbidden();

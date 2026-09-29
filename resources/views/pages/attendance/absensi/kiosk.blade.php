@@ -34,7 +34,9 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
 }; ?>
 
 <div class="flex min-h-screen flex-col">
-    @vite('resources/js/face-attendance.js')
+    @assets
+        @vite('resources/js/face-attendance.js')
+    @endassets
 
     <header class="flex flex-wrap items-center gap-4 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
         <div class="flex items-center gap-3">

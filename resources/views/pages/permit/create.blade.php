@@ -87,7 +87,7 @@ new #[Title('Ajukan Izin')] class extends Component {
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Ajukan Izin')"
-        :subtitle="__('Pengajuan akan diverifikasi oleh Guru Piket atau Wali Kelas Anda.')">
+        :subtitle="__('Pengajuan akan diverifikasi oleh Guru Piket dan Wali Kelas Anda.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('permits.index')" wire:navigate>
                 {{ __('Kembali') }}

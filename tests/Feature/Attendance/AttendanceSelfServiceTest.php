@@ -219,3 +219,15 @@ test('a sakit day closes the scanner: absensi pulang is never unlocked', functio
     expect($component->get('lastResult')['ok'])->toBeFalse()
         ->and($student->attendances()->sole()->checked_out_at)->toBeNull();
 });
+
+test('the camera script is served in the head so a wire:navigate visit waits for it', function () {
+    signedInSiswa();
+
+    $html = $this->get(route('attendance.absensi'))->assertOk()->getContent();
+
+    // Livewire only waits for <head> scripts before running x-init after a
+    // wire:navigate swap; a body module script would leave SmartsisCamera
+    // undefined and the camera would never start.
+    expect(str($html)->before('</head>')->contains('attendance-camera'))->toBeTrue()
+        ->and(str($html)->after('<body')->contains('attendance-camera'))->toBeFalse();
+});

@@ -95,8 +95,9 @@ new #[Title('Input Izin Manual')] class extends Component
 
         unset($data['attachment'], $data['note']);
 
-        // The recorder is the approver — the student handed the request over in
-        // person, so the permit lands approved and counts for attendance.
+        // The recorder is the Guru Piket approver — the student handed the
+        // request over in person, so the permit counts for attendance right
+        // away. The student's wali kelas still has to approve it.
         Permit::create([
             ...$data,
             'status' => PermitStatus::Approved,
@@ -105,7 +106,7 @@ new #[Title('Input Izin Manual')] class extends Component
             'decision_note' => filled($this->note) ? $this->note : __('Diinput manual oleh :name.', ['name' => auth()->user()->name]),
         ]);
 
-        toast(__('Izin dicatat & langsung disetujui.'), 'success');
+        toast(__('Izin dicatat & disetujui. Menunggu persetujuan wali kelas.'), 'success');
 
         $this->redirectRoute('permits.index', navigate: true);
     }
@@ -113,7 +114,7 @@ new #[Title('Input Izin Manual')] class extends Component
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Input Izin Manual')"
-        :subtitle="__('Catat izin siswa yang diajukan langsung. Izin tercatat sebagai disetujui oleh Anda.')">
+        :subtitle="__('Catat izin siswa yang diajukan langsung. Izin tercatat sebagai disetujui oleh Anda, lalu menunggu persetujuan wali kelas.')">
         <x-slot:actions>
             <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('permits.index')" wire:navigate>
                 {{ __('Kembali') }}

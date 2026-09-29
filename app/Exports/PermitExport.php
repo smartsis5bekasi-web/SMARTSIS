@@ -43,7 +43,7 @@ class PermitExport extends StringValueBinder implements FromCollection, ShouldAu
     public function collection(): Collection
     {
         return (clone $this->baseQuery)
-            ->with(['student.classroom', 'decider'])
+            ->with(['student.classroom', 'decider', 'homeroomApprover'])
             ->when($this->status !== '', fn (Builder $query) => $query->where('status', $this->status))
             ->when($this->type !== '', fn (Builder $query) => $query->where('type', $this->type))
             ->latest()
@@ -66,6 +66,8 @@ class PermitExport extends StringValueBinder implements FromCollection, ShouldAu
             'diputuskan_oleh',
             'tgl_diputuskan',
             'catatan_keputusan',
+            'disetujui_wali_kelas',
+            'tgl_disetujui_wali_kelas',
         ];
     }
 
@@ -82,10 +84,12 @@ class PermitExport extends StringValueBinder implements FromCollection, ShouldAu
             $row->type->label(),
             $row->date->format('d-m-Y'),
             $row->reason,
-            $row->status->label(),
+            $row->statusLabel(),
             $row->decider?->name,
             $row->decided_at?->format('d-m-Y H:i'),
             $row->decision_note,
+            $row->homeroomApprover?->name,
+            $row->homeroom_approved_at?->format('d-m-Y H:i'),
         ];
     }
 

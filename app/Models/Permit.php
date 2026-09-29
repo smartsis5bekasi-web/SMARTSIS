@@ -22,6 +22,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $decided_by
  * @property Carbon|null $decided_at
  * @property string|null $decision_note
+ * @property int|null $homeroom_approved_by
+ * @property Carbon|null $homeroom_approved_at
+ * @property string|null $homeroom_note
  */
 class Permit extends Model
 {
@@ -38,10 +41,13 @@ class Permit extends Model
         'decided_by',
         'decided_at',
         'decision_note',
+        'homeroom_approved_by',
+        'homeroom_approved_at',
+        'homeroom_note',
     ];
 
     /**
-     * Whether the permit is still awaiting a decision.
+     * Whether the permit is still awaiting the Guru Piket's decision.
      */
     public function isPending(): bool
     {
@@ -49,8 +55,51 @@ class Permit extends Model
     }
 
     /**
-     * Approve the permit (F-25). Idempotent: a decided permit is never
-     * re-decided.
+     * Whether the student's wali kelas has signed off on the permit.
+     */
+    public function isHomeroomApproved(): bool
+    {
+        return $this->homeroom_approved_at !== null;
+    }
+
+    /**
+     * Whether the permit still needs the wali kelas' approval — true both
+     * before and after the Guru Piket decides, until it is rejected.
+     */
+    public function isAwaitingHomeroom(): bool
+    {
+        return $this->status !== PermitStatus::Rejected && ! $this->isHomeroomApproved();
+    }
+
+    /**
+     * Both the Guru Piket and the wali kelas approved the permit.
+     */
+    public function isFullyApproved(): bool
+    {
+        return $this->status === PermitStatus::Approved && $this->isHomeroomApproved();
+    }
+
+    /**
+     * The label shown to users. `status` alone only tracks the Guru Piket
+     * decision, so an approved permit reads "Menunggu Wali Kelas" until the
+     * wali kelas signs off too.
+     */
+    public function statusLabel(): string
+    {
+        return match (true) {
+            $this->status === PermitStatus::Rejected => PermitStatus::Rejected->label(),
+            $this->isFullyApproved() => PermitStatus::Approved->label(),
+            $this->status === PermitStatus::Approved => __('Menunggu Wali Kelas'),
+            $this->isHomeroomApproved() => __('Menunggu Guru Piket'),
+            default => PermitStatus::Pending->label(),
+        };
+    }
+
+    /**
+     * The Guru Piket's approval (F-25). This is the decision that makes the
+     * permit count for attendance ({@see self::approvedFor()}); the wali
+     * kelas' sign-off is still required but does not hold the student up.
+     * Idempotent: a decided permit is never re-decided.
      */
     public function approve(User $decider, ?string $note = null): void
     {
@@ -67,11 +116,30 @@ class Permit extends Model
     }
 
     /**
+     * The wali kelas' approval, recorded alongside the Guru Piket decision.
+     */
+    public function approveAsHomeroom(User $teacher, ?string $note = null): void
+    {
+        if (! $this->isAwaitingHomeroom()) {
+            return;
+        }
+
+        $this->update([
+            'homeroom_approved_by' => $teacher->id,
+            'homeroom_approved_at' => now(),
+            'homeroom_note' => $note,
+        ]);
+    }
+
+    /**
      * Reject the permit with a mandatory reason so the student knows why.
+     *
+     * Either approver may reject until both have approved, so a wali kelas can
+     * still turn down a permit the Guru Piket already let through.
      */
     public function reject(User $decider, string $note): void
     {
-        if (! $this->isPending()) {
+        if ($this->status === PermitStatus::Rejected || $this->isFullyApproved()) {
             return;
         }
 
@@ -117,6 +185,16 @@ class Permit extends Model
     }
 
     /**
+     * The wali kelas who approved the permit.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function homeroomApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'homeroom_approved_by');
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -126,6 +204,7 @@ class Permit extends Model
             'status' => PermitStatus::class,
             'date' => 'date',
             'decided_at' => 'datetime',
+            'homeroom_approved_at' => 'datetime',
         ];
     }
 }

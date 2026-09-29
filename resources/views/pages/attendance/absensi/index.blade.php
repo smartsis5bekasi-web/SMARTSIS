@@ -556,7 +556,12 @@
         @if ($this->isPersonal())
             @if ($this->isSelfService())
                 {{-- ============ Self-service absensi (Siswa) ============ --}}
-                @vite('resources/js/attendance-camera.js')
+                {{-- @assets, not a bare @vite: on a wire:navigate visit Livewire only waits for
+                     <head> scripts before running x-init, so a body module would lose the race
+                     and window.SmartsisCamera would still be undefined. --}}
+                @assets
+                    @vite('resources/js/attendance-camera.js')
+                @endassets
                 @php($step = $this->nextScanStep())
                 @php($attendance = $this->todayAttendance)
 

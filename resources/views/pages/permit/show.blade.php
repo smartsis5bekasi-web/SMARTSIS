@@ -16,24 +16,36 @@ new #[Title('Detail Izin')] class extends Component {
     {
         abort_unless($this->canView($permit), 403);
 
-        $this->permit = $permit->load(['student.classroom', 'decider']);
+        $this->permit = $permit->load(['student.classroom', 'decider', 'homeroomApprover']);
     }
 
     /**
-     * Guru Piket / Super Admin decide any permit; a Wali Kelas decides only
-     * permits of students in their homeroom (F-25).
+     * Guru Piket / Super Admin give the decision that puts the permit into
+     * effect (F-25).
      */
-    public function canDecide(): bool
+    public function canDecideAsPiket(): bool
+    {
+        return $this->permit->isPending()
+            && auth()->user()->can(Permission::ManagePermit->value);
+    }
+
+    /**
+     * The student's own wali kelas must approve every permit as well, before
+     * or after the Guru Piket.
+     */
+    public function canDecideAsHomeroom(): bool
     {
         $user = auth()->user();
 
-        if ($user->can(Permission::ManagePermit->value)) {
-            return true;
-        }
-
-        return $user->primaryRole() === UserRole::WaliKelas
+        return $this->permit->isAwaitingHomeroom()
+            && $user->primaryRole() === UserRole::WaliKelas
             && $this->permit->student?->classroom_id !== null
             && (bool) $user->teacher?->homeroomClassrooms()->whereKey($this->permit->student->classroom_id)->exists();
+    }
+
+    public function canDecide(): bool
+    {
+        return $this->canDecideAsPiket() || $this->canDecideAsHomeroom();
     }
 
     /**
@@ -47,9 +59,20 @@ new #[Title('Detail Izin')] class extends Component {
 
     public function approve(): void
     {
-        abort_unless($this->canDecide() && $this->permit->isPending(), 403);
+        $asPiket = $this->canDecideAsPiket();
+        $asHomeroom = $this->canDecideAsHomeroom();
 
-        $this->permit->approve(auth()->user(), $this->note !== '' ? $this->note : null);
+        abort_unless($asPiket || $asHomeroom, 403);
+
+        $note = $this->note !== '' ? $this->note : null;
+
+        if ($asPiket) {
+            $this->permit->approve(auth()->user(), $note);
+        }
+
+        if ($asHomeroom) {
+            $this->permit->approveAsHomeroom(auth()->user(), $note);
+        }
 
         toast(__('Izin disetujui.'), 'success');
 
@@ -58,7 +81,7 @@ new #[Title('Detail Izin')] class extends Component {
 
     public function reject(): void
     {
-        abort_unless($this->canDecide() && $this->permit->isPending(), 403);
+        abort_unless($this->canDecide(), 403);
 
         $this->validate(
             ['note' => ['required', 'string', 'max:255']],
@@ -123,7 +146,7 @@ new #[Title('Detail Izin')] class extends Component {
         <div class="lg:col-span-2 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
             <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-gray-800">{{ __('Detail Pengajuan') }}</h2>
-                <x-permit.status-badge :status="$permit->status" />
+                <x-permit.status-badge :permit="$permit" />
             </div>
 
             <dl class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -155,6 +178,12 @@ new #[Title('Detail Izin')] class extends Component {
                         <dd class="text-gray-800">{{ $permit->decision_note }}</dd>
                     </div>
                 @endif
+                @if ($permit->homeroom_note)
+                    <div class="sm:col-span-2">
+                        <dt class="text-sm text-gray-500">{{ __('Catatan Wali Kelas') }}</dt>
+                        <dd class="text-gray-800">{{ $permit->homeroom_note }}</dd>
+                    </div>
+                @endif
             </dl>
 
             @if ($permit->attachment_path)
@@ -178,13 +207,39 @@ new #[Title('Detail Izin')] class extends Component {
         <div class="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
             <h2 class="text-lg font-semibold text-gray-800">{{ __('Persetujuan') }}</h2>
 
-            @if (! $permit->isPending())
+            @if ($permit->status === PermitStatus::Rejected)
                 <p class="mt-2 text-sm text-gray-500">
-                    {{ $permit->status === PermitStatus::Approved ? __('Disetujui oleh') : __('Ditolak oleh') }}
+                    {{ __('Ditolak oleh') }}
                     <span class="font-medium text-gray-700">{{ $permit->decider?->name ?? '—' }}</span>
                     {{ $permit->decided_at ? '· '.$permit->decided_at->translatedFormat('d M Y H:i') : '' }}
                 </p>
-            @elseif ($this->canDecide())
+            @else
+                {{-- Both sign-offs are required: Guru Piket (puts the permit into effect) and Wali Kelas. --}}
+                <ul class="mt-4 flex flex-col gap-3">
+                    @foreach ([
+                        [__('Guru Piket'), $permit->status === PermitStatus::Approved, $permit->decider, $permit->decided_at],
+                        [__('Wali Kelas'), $permit->isHomeroomApproved(), $permit->homeroomApprover, $permit->homeroom_approved_at],
+                    ] as [$approverRole, $isApproved, $approver, $approvedAt])
+                        <li class="flex items-start gap-2 text-sm">
+                            <ion-icon name="{{ $isApproved ? 'checkmark-circle' : 'time-outline' }}"
+                                @class(['mt-0.5 shrink-0 text-lg', 'text-green-600' => $isApproved, 'text-amber-500' => ! $isApproved])></ion-icon>
+                            <div>
+                                <p class="font-semibold text-gray-700">{{ $approverRole }}</p>
+                                @if ($isApproved)
+                                    <p class="text-gray-500">
+                                        {{ __('Disetujui oleh') }} <span class="font-medium text-gray-700">{{ $approver?->name ?? '—' }}</span>
+                                        {{ $approvedAt ? '· '.$approvedAt->translatedFormat('d M Y H:i') : '' }}
+                                    </p>
+                                @else
+                                    <p class="text-gray-500">{{ __('Menunggu persetujuan') }}</p>
+                                @endif
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+
+            @if ($this->canDecide())
                 <div class="mt-4 flex flex-col gap-4">
                     <div class="flex flex-col">
                         <label class="mb-1 text-sm font-semibold text-gray-600">{{ __('Catatan') }}</label>
@@ -204,14 +259,15 @@ new #[Title('Detail Izin')] class extends Component {
                         {{ __('Tolak Izin') }}
                     </button>
 
-                    @if ($permit->type === App\Enums\PermitType::Terlambat)
+                    {{-- Only the Guru Piket decision changes attendance. --}}
+                    @if (! $this->canDecideAsPiket())
+                        <p class="text-xs text-gray-500">{{ __('Persetujuan Anda sebagai wali kelas melengkapi persetujuan Guru Piket.') }}</p>
+                    @elseif ($permit->type === App\Enums\PermitType::Terlambat)
                         <p class="text-xs text-gray-500">{{ __('Bila disetujui, keterlambatan siswa pada tanggal tersebut tidak mengurangi poin.') }}</p>
                     @elseif ($permit->type === App\Enums\PermitType::PulangAwal)
                         <p class="text-xs text-gray-500">{{ __('Bila disetujui, siswa dapat melakukan absensi pulang sebelum jam pulang pada tanggal tersebut.') }}</p>
                     @endif
                 </div>
-            @else
-                <p class="mt-2 text-sm text-gray-500">{{ __('Menunggu persetujuan Guru Piket atau Wali Kelas.') }}</p>
             @endif
         </div>
     </div>

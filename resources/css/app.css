@@ -108,6 +108,22 @@ select:focus[data-flux-control] {
     @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
 }
 
+/* Flux's <ui-toast-group> is a `popover="manual"` element that stays open for
+   the whole session, even with no toast in it. Some mobile browsers (seen on
+   iOS) paint the browser's default popover chrome around it — `border: solid`
+   plus padding — leaving a thin black box pinned above the bottom of the screen
+   on every page. Its fixed 24rem width also overflows a phone. Strip the chrome
+   and keep it inside the viewport; the toasts themselves carry their own card. */
+ui-toast-group,
+ui-toast {
+    border: 0;
+    padding: 0;
+}
+
+ui-toast-group {
+    max-width: calc(100vw - 3rem);
+}
+
 /* SlimSelect overrides (library loaded globally in partials/head.blade.php). */
 .ss-main {
     width: 100%;

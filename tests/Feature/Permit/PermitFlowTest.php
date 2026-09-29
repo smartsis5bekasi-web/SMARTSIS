@@ -168,7 +168,7 @@ test('rejecting a permit requires a note', function () {
     expect($permit->fresh()->status)->toBe(PermitStatus::Rejected);
 });
 
-test('a wali kelas can decide permits of their homeroom students only', function () {
+test('a wali kelas can approve permits of their homeroom students only', function () {
     [, $student] = siswaWithStudent();
     $permit = Permit::factory()->for($student)->create();
     $walas = walasFor($student);
@@ -178,7 +178,11 @@ test('a wali kelas can decide permits of their homeroom students only', function
     Livewire::test('pages::permit.show', ['permit' => $permit])
         ->call('approve');
 
-    expect($permit->fresh()->status)->toBe(PermitStatus::Approved);
+    // The wali kelas signs off, but the Guru Piket decision is still pending.
+    $permit->refresh();
+    expect($permit->status)->toBe(PermitStatus::Pending)
+        ->and($permit->homeroom_approved_by)->toBe($walas->id)
+        ->and($permit->statusLabel())->toBe('Menunggu Guru Piket');
 
     // A permit from another class is not even viewable.
     $otherPermit = Permit::factory()->create();
@@ -296,7 +300,8 @@ test('guru piket can record a walk-in permit manually and it lands approved', fu
         ->and($permit->status)->toBe(PermitStatus::Approved)
         ->and($permit->decided_by)->toBe($piket->id)
         ->and($permit->decided_at)->not->toBeNull()
-        ->and($permit->decision_note)->toContain($piket->name);
+        ->and($permit->decision_note)->toContain($piket->name)
+        ->and($permit->isAwaitingHomeroom())->toBeTrue();
 });
 
 test('a manual permit may be backdated and keeps a custom approval note', function () {
@@ -349,4 +354,107 @@ test('roles without kelola perizinan cannot open the manual input page', functio
     $this->actingAs(userWithRole(UserRole::GuruPiket))
         ->get(route('permits.manual'))
         ->assertOk();
+});
+
+test('a piket approval puts the permit into effect while it waits for the wali kelas', function () {
+    [, $student] = siswaWithStudent();
+    $permit = Permit::factory()->for($student)->ofType(PermitType::PulangAwal)->create();
+
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    Livewire::test('pages::permit.show', ['permit' => $permit])->call('approve');
+
+    $permit->refresh();
+    expect($permit->status)->toBe(PermitStatus::Approved)
+        ->and($permit->statusLabel())->toBe('Menunggu Wali Kelas')
+        ->and(Permit::approvedFor($student, PermitType::PulangAwal, now()))->toBeTrue();
+});
+
+test('the wali kelas completes a permit the guru piket already approved', function () {
+    [, $student] = siswaWithStudent();
+    $permit = Permit::factory()->for($student)->approved()->create();
+    $walas = walasFor($student);
+
+    $this->actingAs($walas);
+
+    Livewire::test('pages::permit.show', ['permit' => $permit])
+        ->call('approve')
+        ->assertRedirect(route('permits.index'));
+
+    $permit->refresh();
+    expect($permit->isFullyApproved())->toBeTrue()
+        ->and($permit->homeroom_approved_by)->toBe($walas->id)
+        ->and($permit->statusLabel())->toBe(PermitStatus::Approved->label());
+
+    // Nothing is left to decide once both have signed off.
+    Livewire::test('pages::permit.show', ['permit' => $permit])
+        ->set('note', 'Berubah pikiran.')
+        ->call('reject')
+        ->assertStatus(403);
+
+    expect($permit->fresh()->isFullyApproved())->toBeTrue();
+});
+
+test('the wali kelas can reject a permit the guru piket already approved', function () {
+    [, $student] = siswaWithStudent();
+    $permit = Permit::factory()->for($student)->ofType(PermitType::Terlambat)->approved()->create();
+    $walas = walasFor($student);
+
+    $this->actingAs($walas);
+
+    Livewire::test('pages::permit.show', ['permit' => $permit])
+        ->set('note', 'Siswa tidak memberi kabar ke wali kelas.')
+        ->call('reject')
+        ->assertHasNoErrors();
+
+    $permit->refresh();
+    expect($permit->status)->toBe(PermitStatus::Rejected)
+        ->and($permit->decided_by)->toBe($walas->id)
+        ->and(Permit::approvedFor($student, PermitType::Terlambat, now()))->toBeFalse();
+});
+
+test('the guru piket cannot decide again once they approved', function () {
+    $permit = Permit::factory()->approved()->create();
+
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    Livewire::test('pages::permit.show', ['permit' => $permit])
+        ->set('note', 'Salah input.')
+        ->call('reject')
+        ->assertStatus(403);
+
+    expect($permit->fresh()->status)->toBe(PermitStatus::Approved);
+});
+
+test('the permit index lists both approvers and counts what the wali kelas still has to approve', function () {
+    [, $student] = siswaWithStudent();
+    $walas = walasFor($student);
+    $piket = User::factory()->create(['name' => 'Bu Piket']);
+
+    Permit::factory()->for($student)->create(['date' => now()->subDay()->toDateString()]);
+    Permit::factory()->for($student)->approved()->create(['decided_by' => $piket->id]);
+    Permit::factory()->for($student)->approved()->homeroomApproved()->create(['date' => now()->subDays(2)->toDateString()]);
+    Permit::factory()->for($student)->rejected()->create(['date' => now()->subDays(3)->toDateString()]);
+
+    $this->actingAs($walas);
+
+    Livewire::test('pages::permit.index')
+        ->assertSee('Bu Piket')
+        ->assertSee('Menunggu Wali Kelas')
+        ->assertSee('2 pengajuan menunggu persetujuan');
+});
+
+test('permits a wali kelas approved before the two-step flow keep that approval', function () {
+    [, $student] = siswaWithStudent();
+    $walas = walasFor($student);
+    $byWalas = Permit::factory()->for($student)->approved()->create(['decided_by' => $walas->id]);
+    $byPiket = Permit::factory()->for($student)->approved()->create(['date' => now()->subDay()->toDateString()]);
+
+    $migration = require database_path('migrations/2026_09_29_170352_add_homeroom_approval_to_permits_table.php');
+    $migration->down();
+    $migration->up();
+
+    expect($byWalas->fresh()->homeroom_approved_by)->toBe($walas->id)
+        ->and($byWalas->fresh()->isFullyApproved())->toBeTrue()
+        ->and($byPiket->fresh()->isAwaitingHomeroom())->toBeTrue();
 });

@@ -35,7 +35,9 @@ new #[Title('Daftarkan Wajah Siswa')] class extends Component {
 }; ?>
 
 <div class="flex h-full w-full flex-1 flex-col gap-6">
-    @vite('resources/js/face-onboarding.js')
+    @assets
+        @vite('resources/js/face-onboarding.js')
+    @endassets
 
     <x-ui.page-header :title="__('Daftarkan Wajah')" :subtitle="$student->name.' · '.($student->classroom?->name ?? __('Tanpa kelas'))">
         <x-slot:actions>

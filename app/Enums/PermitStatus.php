@@ -3,9 +3,9 @@
 namespace App\Enums;
 
 /**
- * The permit approval lifecycle (PRD 7.8 — Menunggu Persetujuan /
- * Disetujui / Ditolak). Approval is performed by Guru Piket or the
- * student's Wali Kelas (F-25).
+ * The Guru Piket decision on a permit (PRD 7.8 — Menunggu Persetujuan /
+ * Disetujui / Ditolak). The student's Wali Kelas must approve as well; that
+ * sign-off lives beside the status, so show users `Permit::statusLabel()`.
  */
 enum PermitStatus: string
 {

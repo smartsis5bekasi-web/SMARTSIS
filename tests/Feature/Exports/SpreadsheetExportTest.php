@@ -122,6 +122,8 @@ it('maps a permit row including its decision trail', function () {
         'decided_by' => $decider->id,
         'decided_at' => Carbon::parse('2026-03-04 08:30:00'),
         'decision_note' => 'Disetujui',
+        'homeroom_approved_by' => User::factory()->create(['name' => 'Wali Kelas'])->id,
+        'homeroom_approved_at' => Carbon::parse('2026-03-04 10:15:00'),
     ]);
 
     $export = new PermitExport(Permit::query()->whereKey($permit->id));
@@ -138,6 +140,8 @@ it('maps a permit row including its decision trail', function () {
             'Guru Piket',
             '04-03-2026 08:30',
             'Disetujui',
+            'Wali Kelas',
+            '04-03-2026 10:15',
         ]);
 });
 

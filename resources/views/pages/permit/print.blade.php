@@ -23,7 +23,7 @@ new #[Layout('layouts::print')] #[Title('Cetak Laporan Perizinan')] class extend
     public function getPermitsProperty(): Collection
     {
         return $this->scopedQuery()
-            ->with(['student.classroom', 'decider'])
+            ->with(['student.classroom', 'decider', 'homeroomApprover'])
             ->when(trim($this->search) !== '', function (Builder $query) {
                 $searchTerm = '%' . trim($this->search) . '%';
                 $query->whereHas('student', function (Builder $q) use ($searchTerm) {
@@ -93,6 +93,7 @@ new #[Layout('layouts::print')] #[Title('Cetak Laporan Perizinan')] class extend
                     <th class="border border-gray-300 p-2 text-left">Alasan</th>
                     <th class="border border-gray-300 p-2 text-center">Status</th>
                     <th class="border border-gray-300 p-2 text-left">Diputuskan Oleh</th>
+                    <th class="border border-gray-300 p-2 text-left">Wali Kelas</th>
                 </tr>
             </thead>
             <tbody>
@@ -105,13 +106,14 @@ new #[Layout('layouts::print')] #[Title('Cetak Laporan Perizinan')] class extend
                         <td class="border border-gray-300 p-2">{{ $permit->date->translatedFormat('d M Y') }}</td>
                         <td class="border border-gray-300 p-2 text-gray-600">{{ $permit->reason ?? '—' }}</td>
                         <td class="border border-gray-300 p-2 text-center font-semibold">
-                            {{ $permit->status->label() }}
+                            {{ $permit->statusLabel() }}
                         </td>
                         <td class="border border-gray-300 p-2 text-gray-600">{{ $permit->decider?->name ?? '—' }}</td>
+                        <td class="border border-gray-300 p-2 text-gray-600">{{ $permit->homeroomApprover?->name ?? '—' }}</td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8" class="border border-gray-300 p-4 text-center text-gray-500">
+                        <td colspan="9" class="border border-gray-300 p-4 text-center text-gray-500">
                             Tidak ada data perizinan.
                         </td>
                     </tr>

@@ -39,7 +39,7 @@ new #[Title('Perizinan')] class extends Component
     public function permits(): LengthAwarePaginator
     {
         return $this->scopedQuery()
-            ->with(['student.classroom', 'decider'])
+            ->with(['student.classroom', 'decider', 'homeroomApprover'])
             ->when(trim($this->search) !== '', function (Builder $query) {
                 $searchTerm = '%'.trim($this->search).'%';
                 $query->whereHas('student', function (Builder $q) use ($searchTerm) {
@@ -54,12 +54,24 @@ new #[Title('Perizinan')] class extends Component
     }
 
     /**
-     * Pending requests awaiting the signed-in approver (shown as a hint).
+     * Permits awaiting the signed-in approver's own sign-off (shown as a hint):
+     * the Guru Piket decision, or the wali kelas approval for their homeroom.
      */
     #[Computed]
     public function pendingCount(): int
     {
-        return $this->canDecideAny() ? $this->scopedQuery()->where('status', PermitStatus::Pending)->count() : 0;
+        if (auth()->user()->can(Permission::ManagePermit->value)) {
+            return $this->scopedQuery()->where('status', PermitStatus::Pending)->count();
+        }
+
+        if (auth()->user()->primaryRole() === UserRole::WaliKelas) {
+            return $this->scopedQuery()
+                ->where('status', '!=', PermitStatus::Rejected)
+                ->whereNull('homeroom_approved_at')
+                ->count();
+        }
+
+        return 0;
     }
 
     public function isStudent(): bool
@@ -258,9 +270,16 @@ new #[Title('Perizinan')] class extends Component
                                 <td class="py-3 px-4">{{ $permit->type->label() }}</td>
                                 <td class="py-3 px-4">{{ $permit->date->translatedFormat('d M Y') }}</td>
                                 <td class="py-3 px-4">
-                                    <x-permit.status-badge :status="$permit->status" />
+                                    <x-permit.status-badge :permit="$permit" />
                                 </td>
-                                <td class="py-3 px-4 text-sm text-gray-500">{{ $permit->decider?->name ?? '—' }}</td>
+                                <td class="py-3 px-4 text-sm text-gray-500">
+                                    @if ($permit->status === PermitStatus::Rejected)
+                                        {{ $permit->decider?->name ?? '—' }}
+                                    @else
+                                        <div>{{ __('Piket') }}: <span class="text-gray-700">{{ $permit->status === PermitStatus::Approved ? ($permit->decider?->name ?? '—') : '—' }}</span></div>
+                                        <div>{{ __('Wali Kelas') }}: <span class="text-gray-700">{{ $permit->homeroomApprover?->name ?? '—' }}</span></div>
+                                    @endif
+                                </td>
                                 <td class="py-3 px-4 text-center">
                                     <a href="{{ route('permits.show', $permit) }}" wire:navigate
                                         class="inline-flex items-center gap-1 text-primary-600 transition hover:text-primary-700">
