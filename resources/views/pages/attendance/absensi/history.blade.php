@@ -416,7 +416,10 @@ new #[Title('Riwayat Absen')] class extends Component {
                         <tr class="border-b last:border-0">
                             <td class="py-3 px-4">{{ $key + $this->records->firstItem() }}</td>
                             <td class="py-3 px-4">{{ $attendance->date->translatedFormat('l, d/m/Y') }}</td>
-                            <td class="py-3 px-4 font-semibold">{{ $attendance->student->name }}</td>
+                            <td class="py-3 px-4 font-semibold">
+                                <a href="{{ route('attendance.absensi.student', $attendance->student) }}" wire:navigate
+                                    class="hover:text-primary-600 hover:underline">{{ $attendance->student->name }}</a>
+                            </td>
                             <td class="py-3 px-4">{{ $attendance->student->classroom?->name ?? '—' }}</td>
                             <td class="py-3 px-4">
                                 <div class="flex flex-col items-start gap-1">

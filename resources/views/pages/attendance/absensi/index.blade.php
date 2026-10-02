@@ -956,7 +956,8 @@
                                                 src="{{ $student->avatar_url ?? asset('assets/placeholder.png') }}"
                                                 alt="{{ $student->name }}" />
                                             <div class="flex flex-col">
-                                                <span class="font-medium">{{ $student->name }}</span>
+                                                <a href="{{ route('attendance.absensi.student', $student) }}" wire:navigate
+                                                    class="font-medium hover:text-primary-600 hover:underline">{{ $student->name }}</a>
                                                 <span class="text-xs text-gray-400">{{ $student->nis }}</span>
                                             </div>
                                         </div>

@@ -198,6 +198,16 @@ class Student extends Model
     }
 
     /**
+     * Pemanggilan BK recorded for the student.
+     *
+     * @return HasMany<CounselingRecord, $this>
+     */
+    public function counselingRecords(): HasMany
+    {
+        return $this->hasMany(CounselingRecord::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

@@ -48,6 +48,9 @@ enum Permission: string
     case ViewWarning = 'warning.view';
     case ManageWarning = 'warning.manage';
 
+    // Bimbingan konseling (pemanggilan BK).
+    case ManageCounseling = 'counseling.manage';
+
     // Dashboard.
     case ViewDashboard = 'dashboard.view';
 
@@ -76,6 +79,7 @@ enum Permission: string
             self::ManagePermit => 'Kelola Perizinan',
             self::ViewWarning => 'Lihat Surat Peringatan',
             self::ManageWarning => 'Kelola Surat Peringatan',
+            self::ManageCounseling => 'Catat Pemanggilan BK',
             self::ViewDashboard => 'Lihat Dashboard',
         };
     }
@@ -106,6 +110,7 @@ enum Permission: string
             self::ManagePermit => 'Menyetujui, menolak, dan mencetak perizinan.',
             self::ViewWarning => 'Membuka daftar dan detail surat peringatan.',
             self::ManageWarning => 'Menerbitkan dan mengatur ambang surat peringatan.',
+            self::ManageCounseling => 'Mencatat pemanggilan siswa oleh BK beserta catatannya.',
             self::ViewDashboard => 'Membuka halaman dashboard setelah login.',
         };
     }
@@ -124,6 +129,7 @@ enum Permission: string
             self::ViewAchievement, self::RequestAchievement, self::EditAchievement, self::ManageAchievement => 'Prestasi',
             self::ViewPermit, self::RequestPermit, self::ManagePermit => 'Perizinan',
             self::ViewWarning, self::ManageWarning => 'Surat Peringatan',
+            self::ManageCounseling => 'Bimbingan Konseling',
         };
     }
 

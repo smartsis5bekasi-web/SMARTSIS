@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\AttendanceStatus;
+use App\Enums\CounselingAction;
 use App\Enums\Permission;
 use App\Enums\PermitStatus;
 use App\Enums\PointApprovalStatus;
@@ -12,6 +13,7 @@ use App\Models\AcademicYear;
 use App\Models\Achievement;
 use App\Models\Attendance;
 use App\Models\Classroom;
+use App\Models\CounselingRecord;
 use App\Models\ParentGuardian;
 use App\Models\Permit;
 use App\Models\PointLog;
@@ -27,6 +29,15 @@ use Livewire\Component;
 
 new #[Title('Dashboard')] class extends Component
 {
+    /** The student whose "Catat Pemanggilan" modal is open (Guru BK). */
+    public ?int $counselingStudentId = null;
+
+    public string $counselingAction = '';
+
+    public string $counselingDate = '';
+
+    public string $counselingNote = '';
+
     /**
      * A classroom tablet signed in with a kiosk account has no dashboard of
      * its own; sending it straight to the kiosk means the login redirect lands
@@ -77,21 +88,9 @@ new #[Title('Dashboard')] class extends Component
                 ['label' => 'Total Orang Tua', 'value' => ParentGuardian::count(), 'icon' => 'user-group'],
             ],
             $this->role() === UserRole::GuruBk => [
-                [
-                    'label' => 'Perlu Konseling',
-                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'konseling'))->count(),
-                    'icon' => 'chat-bubble-left-right',
-                ],
-                [
-                    'label' => 'Perlu Pembinaan',
-                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'pembinaan'))->count(),
-                    'icon' => 'exclamation-triangle',
-                ],
-                [
-                    'label' => 'Pemanggilan Ortu',
-                    'value' => $this->warningStudents->filter(fn ($s) => collect($s->recommendations)->contains('action', 'sp_ortu'))->count(),
-                    'icon' => 'user-minus',
-                ],
+                $this->counselingStat(CounselingAction::Konseling, 'Perlu Konseling', 'chat-bubble-left-right'),
+                $this->counselingStat(CounselingAction::Pembinaan, 'Perlu Pembinaan', 'exclamation-triangle'),
+                $this->counselingStat(CounselingAction::PemanggilanOrtu, 'Pemanggilan Ortu', 'user-minus'),
                 [
                     'label' => 'Perlu Persetujuan',
                     'value' => $pendingPermits + $pendingViolations + $pendingAchievements,
@@ -154,54 +153,130 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
-     * Siswa yang memerlukan tindakan bimbingan konseling / pembinaan (Guru BK).
+     * Siswa yang memerlukan tindakan bimbingan konseling / pembinaan (Guru BK),
+     * each carrying its recommended actions and whether BK has already called
+     * the student in for each of them.
      *
      * @return Collection<int, Student>
      */
     #[Computed]
     public function warningStudents(): Collection
     {
-        return Student::with('classroom')
+        return Student::with([
+            'classroom',
+            'counselingRecords' => fn ($query) => $query->latest('called_on')->latest('id'),
+        ])
             ->withCount(['attendances as alpha_count' => function ($query) {
                 $query->where('status', AttendanceStatus::Alpha);
             }])
             ->where(function ($query) {
-                $query->where('current_point', '<', 70)
-                      ->orWhereHas('attendances', function ($q) {
-                          $q->where('status', AttendanceStatus::Alpha);
-                      }, '>', 5);
+                $query->where('current_point', '<', CounselingAction::GUIDANCE_POINT_BELOW)
+                    ->orWhereHas('attendances', function ($q) {
+                        $q->where('status', AttendanceStatus::Alpha);
+                    }, '>=', CounselingAction::ALPHA_THRESHOLD);
             })
             ->get()
-            ->map(function ($student) {
-                $recommendations = [];
+            ->each(function (Student $student): void {
+                $calledActions = $student->counselingRecords->pluck('action');
 
-                if ($student->alpha_count > 5) {
-                    $recommendations[] = [
-                        'label' => 'Konseling',
-                        'color' => 'bg-blue-100 text-blue-700 border-blue-200',
-                        'action' => 'konseling',
-                    ];
-                }
-
-                if ($student->current_point < 70 && $student->current_point >= 50) {
-                    $recommendations[] = [
-                        'label' => 'Pembinaan',
-                        'color' => 'bg-amber-100 text-amber-700 border-amber-200',
-                        'action' => 'pembinaan',
-                    ];
-                }
-
-                if ($student->current_point < 50) {
-                    $recommendations[] = [
-                        'label' => 'Pemanggilan Ortu',
-                        'color' => 'bg-red-100 text-red-700 border-red-200',
-                        'action' => 'sp_ortu',
-                    ];
-                }
-
-                $student->recommendations = $recommendations;
-                return $student;
+                $student->recommendations = collect(CounselingAction::recommendedFor($student->alpha_count, $student->current_point))
+                    ->map(fn (CounselingAction $action): array => [
+                        'action' => $action,
+                        'called' => $calledActions->contains($action),
+                    ])
+                    ->all();
             });
+    }
+
+    /**
+     * The student behind the open "Catat Pemanggilan" modal, with every
+     * pemanggilan recorded so far.
+     */
+    #[Computed]
+    public function counselingStudent(): ?Student
+    {
+        if ($this->counselingStudentId === null) {
+            return null;
+        }
+
+        return Student::with([
+            'classroom',
+            'counselingRecords' => fn ($query) => $query->with('recorder')->latest('called_on')->latest('id'),
+        ])->find($this->counselingStudentId);
+    }
+
+    /**
+     * Open the "Catat Pemanggilan" modal, preselecting the first recommended
+     * action BK has not called the student in for yet.
+     */
+    public function openCounseling(int $studentId): void
+    {
+        abort_unless($this->canRecordCounseling(), 403);
+
+        $student = $this->warningStudents->firstWhere('id', $studentId)
+            ?? Student::findOrFail($studentId);
+
+        $recommendations = collect($student->recommendations ?? []);
+        $action = $recommendations->firstWhere('called', false)['action']
+            ?? $recommendations->first()['action']
+            ?? CounselingAction::Konseling;
+
+        $this->resetErrorBag();
+        $this->counselingStudentId = $student->id;
+        $this->counselingAction = $action->value;
+        $this->counselingDate = now()->toDateString();
+        $this->counselingNote = '';
+
+        unset($this->counselingStudent);
+    }
+
+    public function closeCounseling(): void
+    {
+        $this->reset(['counselingStudentId', 'counselingAction', 'counselingDate', 'counselingNote']);
+        $this->resetErrorBag();
+
+        unset($this->counselingStudent);
+    }
+
+    /**
+     * Record that BK has called the student in, together with BK's notes.
+     */
+    public function saveCounseling(): void
+    {
+        abort_unless($this->canRecordCounseling(), 403);
+
+        $student = $this->counselingStudent;
+
+        abort_if($student === null, 404);
+
+        $data = $this->validate([
+            'counselingAction' => ['required', 'in:'.implode(',', CounselingAction::values())],
+            'counselingDate' => ['required', 'date', 'before_or_equal:today'],
+            'counselingNote' => ['required', 'string', 'max:2000'],
+        ], attributes: [
+            'counselingAction' => __('jenis pemanggilan'),
+            'counselingDate' => __('tanggal'),
+            'counselingNote' => __('catatan'),
+        ]);
+
+        CounselingRecord::create([
+            'student_id' => $student->id,
+            'action' => $data['counselingAction'],
+            'called_on' => $data['counselingDate'],
+            'note' => $data['counselingNote'],
+            'recorded_by' => auth()->id(),
+        ]);
+
+        $this->closeCounseling();
+
+        unset($this->warningStudents, $this->stats);
+
+        $this->dispatch('swal', icon: 'success', title: __('Pemanggilan :name tercatat.', ['name' => $student->name]));
+    }
+
+    public function canRecordCounseling(): bool
+    {
+        return auth()->user()->can(Permission::ManageCounseling->value);
     }
 
     /**
@@ -508,6 +583,31 @@ new #[Title('Dashboard')] class extends Component
     }
 
     /**
+     * A Guru BK card: students the action is recommended for, split into
+     * those BK has already called in and those still waiting.
+     *
+     * @return array{label: string, value: int, icon: string, detail: array<string, int>}
+     */
+    private function counselingStat(CounselingAction $action, string $label, string $icon): array
+    {
+        $recommended = $this->warningStudents
+            ->map(fn (Student $student) => collect($student->recommendations)->firstWhere('action', $action))
+            ->filter();
+
+        $called = $recommended->where('called', true)->count();
+
+        return [
+            'label' => $label,
+            'value' => $recommended->count(),
+            'icon' => $icon,
+            'detail' => [
+                'Sudah dipanggil' => $called,
+                'Belum' => $recommended->count() - $called,
+            ],
+        ];
+    }
+
+    /**
      * @return array<int, array{label: string, value: int|string, icon: string}>
      */
     private function waliKelasStats(): array
@@ -574,12 +674,13 @@ new #[Title('Dashboard')] class extends Component
 
                     {{-- Tampilkan detail breakdown jika ada --}}
                     @if (isset($stat['detail']))
-                        <div class="mt-3 flex items-center justify-between border-t border-zinc-100 pt-2.5 text-xs text-zinc-500">
-                            <span>Izin: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Izin'] }}</strong></span>
-                            <span class="text-zinc-300">•</span>
-                            <span>Langgar: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Langgar'] }}</strong></span>
-                            <span class="text-zinc-300">•</span>
-                            <span>Prestasi: <strong class="text-zinc-800 font-semibold">{{ $stat['detail']['Prestasi'] }}</strong></span>
+                        <div class="mt-3 flex flex-wrap items-center justify-between gap-x-2 border-t border-zinc-100 pt-2.5 text-xs text-zinc-500">
+                            @foreach ($stat['detail'] as $detailLabel => $detailValue)
+                                @unless ($loop->first)
+                                    <span class="text-zinc-300">•</span>
+                                @endunless
+                                <span>{{ $detailLabel }}: <strong class="text-zinc-800 font-semibold">{{ $detailValue }}</strong></span>
+                            @endforeach
                         </div>
                     @endif
                 </div>
@@ -663,8 +764,99 @@ new #[Title('Dashboard')] class extends Component
             <div class="border-b border-zinc-200 p-5">
                 <flux:heading size="lg">{{ __('Siswa Perlu Tindakan / Pembinaan') }}</flux:heading>
             </div>
-            @include('partials.dashboard-bk-table', ['warningStudents' => $this->warningStudents])
+            @include('partials.dashboard-bk-table', [
+                'warningStudents' => $this->warningStudents,
+                'canRecordCounseling' => $this->canRecordCounseling(),
+            ])
         </div>
+
+        {{-- ============ Catat Pemanggilan BK ============ --}}
+        @php($counseled = $this->counselingStudent)
+        @if ($counseled !== null)
+            <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-on:keydown.escape.window="$wire.closeCounseling()">
+                <div class="absolute inset-0 bg-zinc-900/50" wire:click="closeCounseling"></div>
+
+                <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+                    <div class="flex items-start justify-between gap-4 border-b border-zinc-100 px-6 py-4">
+                        <div>
+                            <flux:heading size="lg">{{ __('Pemanggilan BK') }}</flux:heading>
+                            <flux:text class="mt-0.5 text-sm">
+                                {{ $counseled->name }} · {{ $counseled->classroom?->name ?? '—' }}
+                            </flux:text>
+                        </div>
+                        <button type="button" wire:click="closeCounseling" class="text-zinc-400 transition hover:text-zinc-600" aria-label="{{ __('Tutup') }}">
+                            <flux:icon.x-mark class="size-6" />
+                        </button>
+                    </div>
+
+                    <div class="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+                        <form wire:submit="saveCounseling" class="flex flex-col gap-4">
+                            <div class="grid gap-4 sm:grid-cols-2">
+                                <div class="flex flex-col">
+                                    <label for="counseling-action" class="mb-1 text-sm font-semibold text-zinc-600">{{ __('Jenis') }}</label>
+                                    <select id="counseling-action" wire:model="counselingAction"
+                                        class="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                                        @foreach (CounselingAction::cases() as $action)
+                                            <option value="{{ $action->value }}">{{ $action->label() }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('counselingAction')
+                                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
+                                <div class="flex flex-col">
+                                    <label for="counseling-date" class="mb-1 text-sm font-semibold text-zinc-600">{{ __('Tanggal Dipanggil') }}</label>
+                                    <input id="counseling-date" type="date" wire:model="counselingDate" max="{{ now()->toDateString() }}"
+                                        class="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                                    @error('counselingDate')
+                                        <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                    @enderror
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col">
+                                <label for="counseling-note" class="mb-1 text-sm font-semibold text-zinc-600">{{ __('Catatan BK') }}</label>
+                                <textarea id="counseling-note" wire:model="counselingNote" rows="4"
+                                    placeholder="{{ __('Hasil pemanggilan, kesepakatan, tindak lanjut…') }}"
+                                    class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-800 focus:outline-none focus:ring-1 focus:ring-primary-500"></textarea>
+                                @error('counselingNote')
+                                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                                @enderror
+                            </div>
+
+                            <div class="flex items-center justify-end gap-3">
+                                <button type="button" wire:click="closeCounseling"
+                                    class="rounded-md px-4 py-2.5 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100">
+                                    {{ __('Batal') }}
+                                </button>
+                                <button type="submit" wire:loading.attr="disabled" wire:target="saveCounseling"
+                                    class="inline-flex items-center gap-2 rounded-md bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60">
+                                    {{ __('Simpan Pemanggilan') }}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div class="border-t border-zinc-100 pt-4">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-zinc-400">{{ __('Riwayat Pemanggilan') }}</p>
+                            @forelse ($counseled->counselingRecords as $record)
+                                <div wire:key="counseling-record-{{ $record->id }}" class="mt-3 rounded-lg border border-zinc-200 p-3">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium {{ $record->action->badgeClasses() }}">
+                                            {{ $record->action->label() }}
+                                        </span>
+                                        <span class="text-xs text-zinc-500">{{ $record->called_on->translatedFormat('l, d M Y') }}</span>
+                                    </div>
+                                    <p class="mt-2 whitespace-pre-line text-sm text-zinc-700">{{ $record->note }}</p>
+                                    <p class="mt-1 text-xs text-zinc-400">{{ __('Dicatat oleh :name', ['name' => $record->recorder?->name ?? '—']) }}</p>
+                                </div>
+                            @empty
+                                <p class="mt-2 text-sm text-zinc-500">{{ __('Siswa ini belum pernah dipanggil BK.') }}</p>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
     @elseif ($this->isLeadership())
         <div class="rounded-xl border border-zinc-200 bg-white">
             <div class="border-b border-zinc-200 p-5">

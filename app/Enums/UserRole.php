@@ -110,6 +110,7 @@ enum UserRole: string
                 Permission::ViewPermit,
                 Permission::ViewWarning,
                 Permission::ManageWarning,
+                Permission::ManageCounseling,
             ]),
 
             self::WaliKelas => self::permissionValues([
