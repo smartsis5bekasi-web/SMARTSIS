@@ -38,7 +38,8 @@ final readonly class AttendanceRecap
         $counts = [];
 
         foreach (AttendanceStatus::cases() as $case) {
-            $counts['attendances as '.$case->value.'_count'] = fn (Builder $query) => $this->inRange($query)
+            $counts['attendances as '.$case->value.'_count'] = fn (Builder $query) => $query
+                ->whereBetween('date', $this->dateRange())
                 ->where('status', $case->value);
         }
 
@@ -53,7 +54,9 @@ final readonly class AttendanceRecap
             ->when($this->thresholdStatus !== null, fn (Builder $query) => $query
                 ->whereHas(
                     'attendances',
-                    fn (Builder $inner) => $this->inRange($inner)->where('status', $this->thresholdStatus->value),
+                    fn (Builder $inner) => $inner
+                        ->whereBetween('date', $this->dateRange())
+                        ->where('status', $this->thresholdStatus->value),
                     '>=',
                     max(1, $this->minCount),
                 )
@@ -111,13 +114,12 @@ final readonly class AttendanceRecap
     }
 
     /**
-     * @template TQuery of Builder
+     * The period as the [from, to] date strings stored in attendances.date.
      *
-     * @param  TQuery  $query
-     * @return TQuery
+     * @return array{0: string, 1: string}
      */
-    private function inRange(Builder $query): Builder
+    private function dateRange(): array
     {
-        return $query->whereBetween('date', [$this->from->toDateString(), $this->to->toDateString()]);
+        return [$this->from->toDateString(), $this->to->toDateString()];
     }
 }
