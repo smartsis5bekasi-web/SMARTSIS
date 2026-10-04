@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use App\Enums\AttendanceStatus;
 use App\Models\Attendance;
+use App\Models\SchoolHoliday;
 use RuntimeException;
 
 /**
@@ -47,5 +48,10 @@ class AttendanceException extends RuntimeException
     public static function checkOutNotOpen(string $opensAt): self
     {
         return new self(__('Absensi pulang baru dibuka pukul :time.', ['time' => $opensAt]));
+    }
+
+    public static function onHoliday(SchoolHoliday $holiday): self
+    {
+        return new self(__('Hari ini libur (:name) — tidak perlu absensi.', ['name' => $holiday->name]));
     }
 }

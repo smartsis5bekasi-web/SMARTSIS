@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\GradeLevel;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
 use App\Models\Classroom;
@@ -33,7 +34,7 @@ class DemoAccountSeeder extends Seeder
 
         $classroom = Classroom::firstOrCreate(
             ['name' => 'XI IPA 1'],
-            ['major_id' => $majorIpa->id, 'academic_year_id' => $year->id],
+            ['grade' => GradeLevel::Eleven, 'major_id' => $majorIpa->id, 'academic_year_id' => $year->id],
         );
 
         // Roles backed by a teacher profile.

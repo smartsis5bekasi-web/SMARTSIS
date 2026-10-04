@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\GradeLevel;
 use App\Models\AcademicYear;
 use App\Models\Classroom;
 use App\Models\Major;
@@ -29,6 +30,7 @@ test('a classroom can be created with its relations', function () {
 
     $this->assertDatabaseHas('classrooms', [
         'name' => 'XI IPA 1',
+        'grade' => 11,
         'academic_year_id' => $year->id,
         'major_id' => $major->id,
         'homeroom_teacher_id' => $teacher->id,
@@ -83,4 +85,50 @@ test('an empty classroom can be deleted', function () {
         ->call('delete', $classroom->id);
 
     $this->assertDatabaseMissing('classrooms', ['id' => $classroom->id]);
+});
+
+test('the grade is guessed from the classroom name', function (string $name, ?int $grade) {
+    Livewire::test('pages::master-data.classrooms.create')
+        ->set('name', $name)
+        ->assertSet('grade', $grade);
+})->with([
+    'X' => ['X IPS 2', 10],
+    'XI' => ['XI IPA 1', 11],
+    'XII' => ['XII IPA 3', 12],
+    'numeric' => ['12-1', 12],
+    'unknown' => ['Kelas Akselerasi', null],
+]);
+
+test('a guessed grade does not overwrite one already picked', function () {
+    Livewire::test('pages::master-data.classrooms.create')
+        ->set('grade', 12)
+        ->set('name', 'X IPA 1')
+        ->assertSet('grade', 12);
+});
+
+test('the grade is required', function () {
+    Livewire::test('pages::master-data.classrooms.create')
+        ->set('name', 'Kelas Akselerasi')
+        ->set('academic_year_id', AcademicYear::factory()->create()->id)
+        ->call('save')
+        ->assertHasErrors(['grade' => 'required']);
+});
+
+test('the grade can be changed when editing a classroom', function () {
+    $classroom = Classroom::factory()->grade(GradeLevel::Ten)->create();
+
+    Livewire::test('pages::master-data.classrooms.edit', ['classroom' => $classroom])
+        ->assertSet('grade', 10)
+        ->set('grade', 11)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($classroom->fresh()->grade)->toBe(GradeLevel::Eleven);
+});
+
+test('the edit form suggests a grade for a classroom created before grades existed', function () {
+    $classroom = Classroom::factory()->create(['name' => 'XII IPS 1', 'grade' => null]);
+
+    Livewire::test('pages::master-data.classrooms.edit', ['classroom' => $classroom])
+        ->assertSet('grade', 12);
 });

@@ -141,6 +141,7 @@ new #[Title('Kelas')] class extends Component {
             <thead>
                 <tr class="border-b border-gray-100 text-left text-gray-500">
                     <th class="px-4 py-3 font-medium">{{ __('Nama') }}</th>
+                    <th class="px-4 py-3 font-medium">{{ __('Tingkat') }}</th>
                     <th class="px-4 py-3 font-medium">{{ __('Jurusan') }}</th>
                     <th class="px-4 py-3 font-medium">{{ __('Tahun Ajaran') }}</th>
                     <th class="px-4 py-3 font-medium">{{ __('Wali Kelas') }}</th>
@@ -152,6 +153,13 @@ new #[Title('Kelas')] class extends Component {
                 @forelse ($this->classrooms as $classroom)
                     <tr wire:key="{{ $classroom->id }}" class="hover:bg-gray-50">
                         <td class="px-4 py-3 font-medium text-gray-900">{{ $classroom->name }}</td>
+                        <td class="px-4 py-3">
+                            @if ($classroom->grade !== null)
+                                {{ $classroom->grade->label() }}
+                            @else
+                                <span class="text-xs font-semibold text-amber-600" title="{{ __('Isi tingkat agar kelas ini ikut libur per tingkat.') }}">{{ __('Belum diisi') }}</span>
+                            @endif
+                        </td>
                         <td class="px-4 py-3">{{ $classroom->major?->name ?? '—' }}</td>
                         <td class="px-4 py-3">{{ $classroom->academicYear?->name ?? '—' }}</td>
                         <td class="px-4 py-3">{{ $classroom->homeroomTeacher?->name ?? '—' }}</td>
@@ -167,7 +175,7 @@ new #[Title('Kelas')] class extends Component {
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data kelas.') }}</td>
+                        <td colspan="7" class="px-4 py-10 text-center text-gray-400">{{ __('Belum ada data kelas.') }}</td>
                     </tr>
                 @endforelse
             </tbody>

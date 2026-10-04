@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\GradeLevel;
 use App\Models\AcademicYear;
 use App\Models\Classroom;
 use App\Models\Major;
@@ -12,6 +13,8 @@ use Livewire\Component;
 
 new #[Title('Tambah Kelas')] class extends Component {
     public string $name = '';
+
+    public ?int $grade = null;
 
     public ?int $major_id = null;
 
@@ -35,10 +38,29 @@ new #[Title('Tambah Kelas')] class extends Component {
                 Rule::unique('classrooms', 'name')
                     ->where(fn ($query) => $query->where('academic_year_id', $this->academic_year_id)),
             ],
+            'grade' => ['required', Rule::enum(GradeLevel::class)],
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
             'academic_year_id' => ['required', Rule::exists('academic_years', 'id')],
             'homeroom_teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
         ];
+    }
+
+    /**
+     * Fill in the tingkat from a name like "XI IPA 1" while it is still empty.
+     */
+    public function updatedName(): void
+    {
+        if ($this->grade === null) {
+            $this->grade = GradeLevel::guessFromName($this->name)?->value;
+        }
+    }
+
+    /**
+     * @return array<int, GradeLevel>
+     */
+    public function gradeOptions(): array
+    {
+        return GradeLevel::cases();
     }
 
     /**
@@ -93,9 +115,24 @@ new #[Title('Tambah Kelas')] class extends Component {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Nama Kelas') }} <span class="text-red-500">*</span></label>
-                <input type="text" wire:model="name" placeholder="XI IPA 1"
+                <input type="text" wire:model.blur="name" placeholder="XI IPA 1"
                     class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                 @error('name')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+
+            <div class="flex flex-col">
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Tingkat') }} <span class="text-red-500">*</span></label>
+                <select wire:model="grade"
+                    class="w-full rounded-md border border-gray-200 bg-white px-3 py-2.5 text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                    <option value="">{{ __('Pilih tingkat') }}</option>
+                    @foreach ($this->gradeOptions() as $option)
+                        <option value="{{ $option->value }}">{{ $option->label() }}</option>
+                    @endforeach
+                </select>
+                <span class="mt-1 text-xs text-gray-400">{{ __('Dipakai untuk meliburkan satu tingkat sekaligus di Hari Libur.') }}</span>
+                @error('grade')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>

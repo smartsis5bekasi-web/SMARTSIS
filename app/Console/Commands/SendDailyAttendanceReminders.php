@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\PermitStatus;
 use App\Models\Student;
 use App\Notifications\DailyAttendanceReminder;
+use App\Support\SchoolCalendar;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -15,8 +16,9 @@ use Illuminate\Support\Facades\Notification;
  *
  * Scheduled on weekday mornings ahead of the late threshold (see
  * routes/console.php). Students who already checked in, who hold an approved
- * permit for the day, or whose account is disabled are left alone — a reminder
- * they cannot act on is worse than no reminder.
+ * permit for the day, who have the day off (Hari Libur), or whose account is
+ * disabled are left alone — a reminder they cannot act on is worse than no
+ * reminder.
  */
 class SendDailyAttendanceReminders extends Command
 {
@@ -31,7 +33,17 @@ class SendDailyAttendanceReminders extends Command
             ? Carbon::parse($this->option('date'))
             : Carbon::today();
 
+        $calendar = SchoolCalendar::on($date);
+        $holiday = $calendar->schoolWideHolidayOn($date);
+
+        if ($holiday !== null) {
+            $this->info(__('Hari ini libur (:name) — tidak ada pengingat yang dikirim.', ['name' => $holiday->name]));
+
+            return self::SUCCESS;
+        }
+
         $students = Student::query()
+            ->expectedOn($date, $calendar)
             ->whereHas('user', fn (Builder $query) => $query->where('is_active', true))
             ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('date', $date->toDateString()))
             ->whereDoesntHave('permits', fn (Builder $query) => $query

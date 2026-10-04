@@ -93,6 +93,15 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('absensi/pengaturan', 'pages::attendance.absensi.settings')
                 ->middleware('permission:'.Permission::ManageAttendance->value)
                 ->name('absensi.settings');
+            Route::livewire('absensi/hari-libur', 'pages::attendance.absensi.holidays')
+                ->middleware('permission:'.Permission::ManageAttendance->value)
+                ->name('absensi.holidays');
+            Route::livewire('absensi/hari-libur/tambah', 'pages::attendance.absensi.holidays.create')
+                ->middleware('permission:'.Permission::ManageAttendance->value)
+                ->name('absensi.holidays.create');
+            Route::livewire('absensi/hari-libur/{holiday}/edit', 'pages::attendance.absensi.holidays.edit')
+                ->middleware('permission:'.Permission::ManageAttendance->value)
+                ->name('absensi.holidays.edit');
             Route::livewire('point', 'pages::attendance.point.index')
                 ->middleware('permission:'.Permission::ViewPoint->value)
                 ->name('points');

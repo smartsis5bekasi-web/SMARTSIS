@@ -10,6 +10,7 @@
     use App\Models\AttendanceSetting;
     use App\Models\Classroom;
     use App\Models\Permit;
+    use App\Models\SchoolHoliday;
     use App\Models\Student;
     use Carbon\CarbonInterface;
     use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -18,6 +19,7 @@
     use Illuminate\Support\Collection;
     use App\Actions\Attendance\StoreAttendanceSelfie;
     use App\Support\AttendanceCapture;
+    use App\Support\SchoolCalendar;
     use Illuminate\Support\Facades\Storage;
     use Livewire\Attributes\Computed;
     use Livewire\Attributes\Title;
@@ -120,9 +122,27 @@
         }
 
         /**
+         * The holiday the signed-in siswa has today, if any — absensi is closed
+         * to them, and the page says why instead of opening the camera.
+         */
+        #[Computed]
+        public function todayHoliday(): ?SchoolHoliday
+        {
+            $student = auth()->user()->student;
+
+            if (! $this->isSelfService() || $student === null) {
+                return null;
+            }
+
+            return SchoolCalendar::on(now())->holidayFor($student, now());
+        }
+
+        /**
          * The next scan step for the signed-in siswa: absensi masuk always comes
          * first — absensi pulang only unlocks after check-in is recorded. Null
-         * when the day is complete or already covered by izin/sakit/alpha.
+         * when the day is complete, already covered by izin/sakit/alpha, or a
+         * holiday for the student (a check-in made before the holiday was
+         * declared can still check out).
          */
         public function nextScanStep(): ?string
         {
@@ -133,7 +153,7 @@
             $attendance = $this->todayAttendance;
 
             if ($attendance === null) {
-                return 'masuk';
+                return $this->todayHoliday === null ? 'masuk' : null;
             }
 
             if ($attendance->status->isPresent() && ! $attendance->isCheckedOut()) {
@@ -356,6 +376,34 @@
         }
 
         /**
+         * The declared holidays for the selected date, loaded once per request.
+         */
+        #[Computed]
+        public function calendar(): SchoolCalendar
+        {
+            return SchoolCalendar::on($this->selectedDate());
+        }
+
+        /**
+         * The holidays falling on the selected date (staff monitor banner).
+         *
+         * @return Collection<int, SchoolHoliday>
+         */
+        #[Computed]
+        public function selectedDateHolidays(): Collection
+        {
+            return $this->calendar->holidaysOn($this->selectedDate())->toBase();
+        }
+
+        /**
+         * Whether the student has the selected date off.
+         */
+        public function isOnHoliday(Student $student): bool
+        {
+            return $this->calendar->holidayFor($student, $this->selectedDate()) !== null;
+        }
+
+        /**
          * Daily monitor rows: every scoped student with their attendance record
          * (if any) on the selected date.
          *
@@ -374,11 +422,15 @@
                         ->where('name', 'like', '%'.$this->search.'%')
                         ->orWhere('nis', 'like', '%'.$this->search.'%'),
                 ))
-                ->when($this->status === 'none', fn (Builder $query) => $query->whereDoesntHave(
+                ->when($this->status === 'none', fn (Builder $query) => $query->expectedOn($date, $this->calendar)->whereDoesntHave(
                     'attendances',
                     fn (Builder $inner) => $inner->whereDate('date', $date->toDateString()),
                 ))
-                ->when($this->status !== '' && $this->status !== 'none', fn (Builder $query) => $query->whereHas(
+                ->when($this->status === 'holiday', fn (Builder $query) => $query->onHoliday($date, $this->calendar)->whereDoesntHave(
+                    'attendances',
+                    fn (Builder $inner) => $inner->whereDate('date', $date->toDateString()),
+                ))
+                ->when($this->status !== '' && ! in_array($this->status, ['none', 'holiday'], true), fn (Builder $query) => $query->whereHas(
                     'attendances',
                     fn (Builder $inner) => $inner->whereDate('date', $date->toDateString())->where('status', $this->status),
                 ))
@@ -388,16 +440,19 @@
 
         /**
          * Recorded/unrecorded counts per status for the selected date (F-11).
+         * A student with no record who has the day off counts as "Libur", not
+         * "Belum Absen".
          *
          * @return array<string, int>
          */
         #[Computed]
         public function stats(): array
         {
+            $date = $this->selectedDate();
             $studentIds = $this->scopedStudents()->pluck('id');
 
             $byStatus = Attendance::query()
-                ->onDate($this->selectedDate())
+                ->onDate($date)
                 ->whereIn('student_id', $studentIds)
                 ->selectRaw('status, count(*) as total')
                 ->groupBy('status')
@@ -408,6 +463,11 @@
             foreach (AttendanceStatus::cases() as $case) {
                 $stats[$case->value] = (int) ($byStatus[$case->value] ?? 0);
             }
+
+            $stats['holiday'] = $this->scopedStudents()
+                ->onHoliday($date, $this->calendar)
+                ->whereDoesntHave('attendances', fn (Builder $query) => $query->whereDate('date', $date->toDateString()))
+                ->count();
 
             $stats['none'] = max(0, $studentIds->count() - array_sum($stats));
 
@@ -543,6 +603,9 @@
                     {{ __('Rekap') }}
                 </x-ui.button>
                 @if ($this->canManage())
+                    <x-ui.button variant="secondary" icon="calendar-clear-outline" :href="route('attendance.absensi.holidays')" wire:navigate>
+                        {{ __('Hari Libur') }}
+                    </x-ui.button>
                     <x-ui.button variant="secondary" icon="settings-outline" :href="route('attendance.absensi.settings')" wire:navigate>
                         {{ __('Pengaturan') }}
                     </x-ui.button>
@@ -653,6 +716,11 @@
                                 @elseif ($attendance?->isCheckedOut())
                                     <ion-icon name="checkmark-done-circle-outline" class="text-4xl text-green-500"></ion-icon>
                                     <p class="text-sm font-medium text-gray-600">{{ __('Absensi hari ini sudah selesai. Sampai jumpa besok!') }}</p>
+                                @elseif ($attendance === null)
+                                    {{-- Only a holiday closes the scanner before check-in. --}}
+                                    <ion-icon name="calendar-clear-outline" class="text-4xl text-primary-500"></ion-icon>
+                                    <p class="text-sm font-semibold text-gray-700">{{ __('Hari ini libur: :name', ['name' => $this->todayHoliday?->name]) }}</p>
+                                    <p class="text-xs text-gray-500">{{ __('Kamu tidak perlu absen hari ini.') }}</p>
                                 @else
                                     <x-attendance.status-badge :status="$attendance->status" />
                                     <p class="text-sm font-medium text-gray-600">
@@ -671,7 +739,7 @@
 
                         {{-- Sakit / Izin shortcuts: only while today is still
                              unrecorded, since both replace the whole day. --}}
-                        @if ($attendance === null)
+                        @if ($attendance === null && $this->todayHoliday === null)
                             <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
                                 <button type="button" wire:click="openDeclaration('sakit')"
                                     class="inline-flex items-center gap-2 rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700">
@@ -881,6 +949,22 @@
                 </div>
             @endif
 
+            @foreach ($this->selectedDateHolidays as $holiday)
+                <div wire:key="holiday-banner-{{ $holiday->id }}" class="flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-5 py-4">
+                    <ion-icon name="calendar-clear-outline" class="text-2xl text-primary-600"></ion-icon>
+                    <p class="flex-1 text-sm text-primary-900">
+                        <span class="font-semibold">{{ __('Hari libur: :name', ['name' => $holiday->name]) }}</span>
+                        · {{ $holiday->scopeLabel() }} · {{ $holiday->periodLabel() }}.
+                        {{ $holiday->isSchoolWide()
+                            ? __('Siswa tidak wajib absen dan tidak akan ditandai Menunggu Konfirmasi.')
+                            : __('Siswa tingkat ini tidak wajib absen; tingkat lain tetap absen seperti biasa.') }}
+                    </p>
+                    @if ($this->canManage())
+                        <a href="{{ route('attendance.absensi.holidays.edit', $holiday) }}" wire:navigate class="text-sm font-semibold text-primary-700 hover:underline">{{ __('Ubah') }}</a>
+                    @endif
+                </div>
+            @endforeach
+
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7">
                 @foreach ($this->statuses() as $case)
                     <div class="rounded-xl bg-white p-4 drop-shadow-lg">
@@ -892,6 +976,12 @@
                     <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Belum Absen') }}</p>
                     <p class="mt-1 text-2xl font-bold tabular-nums text-gray-800">{{ $this->stats['none'] }}</p>
                 </div>
+                @if ($this->selectedDateHolidays->isNotEmpty())
+                    <div class="rounded-xl bg-white p-4 drop-shadow-lg">
+                        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Libur') }}</p>
+                        <p class="mt-1 text-2xl font-bold tabular-nums text-gray-800">{{ $this->stats['holiday'] }}</p>
+                    </div>
+                @endif
             </div>
 
             <div class="flex-col bg-white rounded-xl p-6 drop-shadow-lg">
@@ -912,6 +1002,9 @@
                             <option value="{{ $case->value }}">{{ $case->label() }}</option>
                         @endforeach
                         <option value="none">{{ __('Belum Absen') }}</option>
+                        @if ($this->selectedDateHolidays->isNotEmpty())
+                            <option value="holiday">{{ __('Libur') }}</option>
+                        @endif
                     </select>
                     <input type="search" wire:model.live.debounce.400ms="search" placeholder="{{ __('Cari nama / NIS…') }}"
                         class="w-full max-w-xs rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500" />
@@ -920,7 +1013,7 @@
                         <button type="button" x-data
                             @click="confirmDelete(() => $wire.markAbsentees(), {
                                 title: @js(__('Tandai Alpha?')),
-                                text: @js(__('Semua siswa yang belum tercatat atau masih Menunggu Konfirmasi pada tanggal terpilih akan ditandai Alpha dan poinnya dikurangi otomatis.')),
+                                text: @js(__('Semua siswa yang belum tercatat atau masih Menunggu Konfirmasi pada tanggal terpilih akan ditandai Alpha dan poinnya dikurangi otomatis. Siswa yang sedang libur dilewati.')),
                                 confirmButtonText: @js(__('Ya, tandai')),
                             })"
                             class="ml-auto inline-flex items-center gap-2 rounded-md bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100">
@@ -971,6 +1064,10 @@
                                                 <x-attendance.status-badge :status="$attendance->status" />
                                                 <x-attendance.confirmation-hint :attendance="$attendance" :setting="$this->setting" />
                                             </div>
+                                        @elseif ($this->isOnHoliday($student))
+                                            <span class="inline-flex rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-semibold text-primary-700">
+                                                {{ __('Libur') }}
+                                            </span>
                                         @else
                                             <span class="inline-flex rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500">
                                                 {{ __('Belum Absen') }}

@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\SchoolCalendar;
+use Carbon\CarbonInterface;
 use Database\Factories\StudentFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -100,6 +103,56 @@ class Student extends Model
     public function needsOnboarding(): bool
     {
         return ! $this->hasCompletedOnboarding() || ! $this->hasRegisteredFace();
+    }
+
+    /**
+     * Narrow to the students who are expected at school on the date: nobody
+     * on a school-wide holiday, and nobody in a grade that has the day off.
+     * A student whose classroom has no grade only ever has school-wide
+     * holidays off. Weekends are the caller's concern.
+     *
+     * @param  Builder<Student>  $query
+     */
+    public function scopeExpectedOn(Builder $query, CarbonInterface $date, ?SchoolCalendar $calendar = null): void
+    {
+        $calendar ??= SchoolCalendar::on($date);
+
+        if ($calendar->schoolWideHolidayOn($date) !== null) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $gradesOff = $calendar->gradesOffOn($date);
+
+        if ($gradesOff !== []) {
+            $query->whereDoesntHave('classroom', fn (Builder $classroom) => $classroom->whereIn('grade', $gradesOff));
+        }
+    }
+
+    /**
+     * The opposite of {@see scopeExpectedOn()}: the students who have the
+     * date off.
+     *
+     * @param  Builder<Student>  $query
+     */
+    public function scopeOnHoliday(Builder $query, CarbonInterface $date, ?SchoolCalendar $calendar = null): void
+    {
+        $calendar ??= SchoolCalendar::on($date);
+
+        if ($calendar->schoolWideHolidayOn($date) !== null) {
+            return;
+        }
+
+        $gradesOff = $calendar->gradesOffOn($date);
+
+        if ($gradesOff === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereHas('classroom', fn (Builder $classroom) => $classroom->whereIn('grade', $gradesOff));
     }
 
     /**

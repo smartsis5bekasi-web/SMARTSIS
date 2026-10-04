@@ -9,9 +9,11 @@ use App\Exceptions\AttendanceException;
 use App\Models\Attendance;
 use App\Models\AttendanceSetting;
 use App\Models\Permit;
+use App\Models\SchoolHoliday;
 use App\Models\Student;
 use App\Models\User;
 use App\Support\AttendanceCapture;
+use App\Support\SchoolCalendar;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -22,6 +24,11 @@ use Illuminate\Support\Facades\DB;
  * face check-in/check-out from the kiosk, manual status corrections, the
  * end-of-day pending sweep, and the alpha sweep. Late and alpha statuses drive
  * the point engine through {@see AttendanceRecorded}.
+ *
+ * Declared holidays ({@see SchoolHoliday}) are honored throughout: a student
+ * who has the day off cannot check in or declare sakit/izin, is never swept
+ * into "Menunggu Konfirmasi" or bulk-marked Alpha, and a school-wide holiday
+ * does not count towards the alpha-otomatis deadline.
  */
 class RecordAttendance
 {
@@ -29,8 +36,9 @@ class RecordAttendance
      * Record the morning check-in; the status (Hadir/Terlambat) follows the
      * configured late threshold.
      *
-     * @throws AttendanceException when the window has not opened yet, or
-     *                             today's attendance is already recorded
+     * @throws AttendanceException when the window has not opened yet, today
+     *                             is a holiday for the student, or today's
+     *                             attendance is already recorded
      */
     public function checkIn(
         Student $student,
@@ -40,6 +48,8 @@ class RecordAttendance
     ): Attendance {
         $now = now();
         $existing = $this->unresolvedRecordFor($student, $now);
+
+        $this->ensureNotOnHoliday($student, $now);
 
         $setting = AttendanceSetting::current();
 
@@ -157,8 +167,9 @@ class RecordAttendance
      * written; it stays unverified until a Guru Piket / Wali Kelas confirms
      * the uploaded proof.
      *
-     * @throws AttendanceException when today is already recorded, or the
-     *                             status is not one a student may declare
+     * @throws AttendanceException when today is already recorded, is a
+     *                             holiday for the student, or the status is
+     *                             not one a student may declare
      */
     public function selfDeclare(
         Student $student,
@@ -174,6 +185,8 @@ class RecordAttendance
 
         $now = now();
         $attendance = $this->unresolvedRecordFor($student, $now) ?? $student->attendances()->make();
+
+        $this->ensureNotOnHoliday($student, $now);
 
         $capture ??= new AttendanceCapture;
 
@@ -211,6 +224,21 @@ class RecordAttendance
         }
 
         return $existing;
+    }
+
+    /**
+     * A student who has the day off has nothing to record. A check-out is
+     * still allowed, so a school sent home after check-in can close the day.
+     *
+     * @throws AttendanceException when the date is a holiday for the student
+     */
+    private function ensureNotOnHoliday(Student $student, CarbonInterface $date): void
+    {
+        $holiday = SchoolCalendar::on($date)->holidayFor($student, $date);
+
+        if ($holiday !== null) {
+            throw AttendanceException::onHoliday($holiday);
+        }
     }
 
     /**
@@ -284,23 +312,46 @@ class RecordAttendance
 
         $today = Carbon::parse($today ?? now())->startOfDay();
         $escalated = 0;
+        $cutoff = $today->copy()->subDays($setting->pending_alpha_after_days);
+
+        $oldest = Attendance::query()
+            ->where('status', AttendanceStatus::Pending)
+            ->whereDate('date', '<', $cutoff->toDateString())
+            ->min('date');
+
+        if ($oldest === null) {
+            return 0;
+        }
+
+        // One load of every holiday from the oldest pending day onwards, so
+        // neither the deadlines nor the holiday check query per record.
+        $calendar = SchoolCalendar::from(Carbon::parse($oldest));
 
         Attendance::query()
             ->where('status', AttendanceStatus::Pending)
-            // Weekday deadlines are never earlier than calendar ones, so this
-            // only narrows the scan; the exact check happens per record.
-            ->whereDate('date', '<', $today->copy()->subDays($setting->pending_alpha_after_days)->toDateString())
-            ->chunkById(100, function ($records) use ($setting, $today, &$escalated): void {
+            // School-day deadlines are never earlier than calendar ones, so
+            // this only narrows the scan; the exact check happens per record.
+            ->whereDate('date', '<', $cutoff->toDateString())
+            ->chunkById(100, function ($records) use ($setting, $calendar, $today, &$escalated): void {
                 foreach ($records as $record) {
-                    if ($setting->pendingDeadline($record->date)->gte($today)) {
+                    if ($setting->pendingDeadline($record->date, $calendar)->gte($today)) {
                         continue;
                     }
 
-                    $escalated += (int) DB::transaction(function () use ($record, $setting): bool {
+                    $escalated += (int) DB::transaction(function () use ($record, $setting, $calendar): bool {
                         // A teacher may have confirmed it since the chunk was read.
-                        $attendance = Attendance::query()->with('student')->lockForUpdate()->find($record->id);
+                        $attendance = Attendance::query()->with('student.classroom')->lockForUpdate()->find($record->id);
 
                         if ($attendance === null || ! $attendance->status->isPending()) {
+                            return false;
+                        }
+
+                        // The day was declared a holiday after the sweep put
+                        // the student on the books: nothing to escalate, and
+                        // the placeholder never cost anything to drop.
+                        if ($attendance->student !== null && $calendar->holidayFor($attendance->student, $attendance->date) !== null) {
+                            $attendance->delete();
+
                             return false;
                         }
 
@@ -359,6 +410,7 @@ class RecordAttendance
      * Mark every student without a settled record on the date — no record at
      * all, or only the sweep's pending placeholder — as Alpha (the manual
      * "Tandai Alpha" bulk action behind "pengurangan poin otomatis: alpha").
+     * Students who have the date off are left alone.
      *
      * @return int the number of students marked
      */
@@ -368,6 +420,7 @@ class RecordAttendance
         $marked = 0;
 
         $this->attendingStudents()
+            ->expectedOn($date)
             ->whereDoesntHave('attendances', fn (Builder $query) => $query
                 ->whereDate('date', $date->toDateString())
                 ->where('status', '!=', AttendanceStatus::Pending))
@@ -387,8 +440,9 @@ class RecordAttendance
      * to confirm as alpha, sakit, or izin. No points move until then.
      *
      * Students registered after the date are skipped, so backfilling an old
-     * day never blames someone who was not enrolled yet. Safe to run
-     * repeatedly — it only fills gaps.
+     * day never blames someone who was not enrolled yet, and so is everyone
+     * who has the date off ({@see SchoolHoliday}). Safe to run repeatedly —
+     * it only fills gaps.
      *
      * @return int the number of pending records written
      */
@@ -399,6 +453,7 @@ class RecordAttendance
         $written = 0;
 
         $this->attendingStudents()
+            ->expectedOn($date)
             ->where(fn (Builder $query) => $query
                 ->whereNull('created_at')
                 ->orWhere('created_at', '<=', $date->copy()->endOfDay()))
@@ -419,6 +474,64 @@ class RecordAttendance
             });
 
         return $written;
+    }
+
+    /**
+     * Undo what the system recorded on the days a holiday covers, for the
+     * students it covers — for a holiday declared after the fact (a closure
+     * announced in the morning, or only entered days later). The sweep's
+     * "Menunggu Konfirmasi" placeholders are dropped, and so is an "Alpha
+     * otomatis" no teacher has looked at, with its points given back.
+     *
+     * Anything a person recorded — a check-in, a sakit/izin, or a status a
+     * teacher set by hand — is left as it is.
+     *
+     * @return int the number of records removed
+     */
+    public function releaseHoliday(SchoolHoliday $holiday, ?User $by = null): int
+    {
+        $to = $holiday->end_date->min(now()->startOfDay());
+
+        if ($holiday->start_date->gt($to)) {
+            return 0;
+        }
+
+        $released = 0;
+
+        Attendance::query()
+            ->whereDate('date', '>=', $holiday->start_date->toDateString())
+            ->whereDate('date', '<=', $to->toDateString())
+            ->where(fn (Builder $query) => $query
+                ->where('status', AttendanceStatus::Pending)
+                ->orWhere(fn (Builder $escalated) => $escalated
+                    ->whereNotNull('escalated_at')
+                    ->whereNull('verified_at')))
+            ->when(! $holiday->isSchoolWide(), fn (Builder $query) => $query->whereHas(
+                'student.classroom',
+                fn (Builder $classroom) => $classroom->whereIn('grade', $holiday->grades),
+            ))
+            ->chunkById(100, function ($records) use ($holiday, $by, &$released): void {
+                foreach ($records as $record) {
+                    $released += (int) DB::transaction(function () use ($record, $holiday, $by): bool {
+                        $attendance = Attendance::query()->lockForUpdate()->find($record->id);
+
+                        if ($attendance === null || ! ($attendance->status->isPending() || $attendance->needsEscalationReview())) {
+                            return false;
+                        }
+
+                        $attendance->reversePoints($by, __('Dibatalkan — :date libur (:name)', [
+                            'date' => $attendance->date->translatedFormat('j M Y'),
+                            'name' => $holiday->name,
+                        ]));
+
+                        $attendance->delete();
+
+                        return true;
+                    });
+                }
+            });
+
+        return $released;
     }
 
     /**

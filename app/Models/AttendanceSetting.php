@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\AttendanceStatus;
+use App\Support\SchoolCalendar;
 use Carbon\CarbonInterface;
 use Database\Factories\AttendanceSettingFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -109,16 +110,22 @@ class AttendanceSetting extends Model
 
     /**
      * The last school day a teacher can confirm a pending day that fell on
-     * the given date; it becomes Alpha the day after. Weekends do not count,
-     * so a Friday absence is not escalated before anyone is back at school.
+     * the given date; it becomes Alpha the day after. Weekends and
+     * school-wide holidays do not count, so an absence right before a long
+     * break is not escalated before anyone is back at school.
+     *
+     * Pass a calendar loaded from the date onwards when computing many
+     * deadlines at once; otherwise one is loaded here.
      */
-    public function pendingDeadline(CarbonInterface $date): ?Carbon
+    public function pendingDeadline(CarbonInterface $date, ?SchoolCalendar $calendar = null): ?Carbon
     {
         if (! $this->autoAlphaEnabled()) {
             return null;
         }
 
-        return Carbon::parse($date)->startOfDay()->addWeekdays($this->pending_alpha_after_days);
+        $calendar ??= SchoolCalendar::from($date);
+
+        return $calendar->addSchoolDays($date, $this->pending_alpha_after_days);
     }
 
     /**

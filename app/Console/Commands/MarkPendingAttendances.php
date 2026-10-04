@@ -6,6 +6,7 @@ use App\Actions\Attendance\RecordAttendance;
 use App\Enums\AttendanceStatus;
 use App\Models\Attendance;
 use App\Models\AttendanceSetting;
+use App\Support\SchoolCalendar;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
@@ -17,14 +18,16 @@ use Illuminate\Support\Carbon;
  *
  * Scheduled hourly on weekdays (see routes/console.php) and idempotent; it only
  * acts once the check-out window has opened, so students still on their way
- * in are not flagged. A day on which nobody recorded anything is treated as a
- * holiday and skipped — otherwise a tanggal merah would flag the whole school.
+ * in are not flagged. Declared holidays (Hari Libur) are always honored —
+ * a school-wide one skips the day, a grade one leaves those grades out — and
+ * a day on which nobody recorded anything is still treated as a holiday, as
+ * a safety net for a tanggal merah nobody entered.
  */
 class MarkPendingAttendances extends Command
 {
     protected $signature = 'attendance:mark-pending
                             {--date= : Sweep this date instead of today (Y-m-d)}
-                            {--force : Sweep even on a weekend or a day with no attendance recorded at all}';
+                            {--force : Sweep even on a weekend or a day with no attendance recorded at all (declared holidays are still honored)}';
 
     protected $description = 'Record students with no attendance for the day as pending, for a teacher to confirm';
 
@@ -44,6 +47,14 @@ class MarkPendingAttendances extends Command
 
         if (! $force && $date->isWeekend()) {
             $this->info(__(':date adalah akhir pekan — dilewati.', ['date' => $date->toDateString()]));
+
+            return self::SUCCESS;
+        }
+
+        $holiday = SchoolCalendar::on($date)->schoolWideHolidayOn($date);
+
+        if ($holiday !== null) {
+            $this->info(__(':date libur (:name) — dilewati.', ['date' => $date->toDateString(), 'name' => $holiday->name]));
 
             return self::SUCCESS;
         }

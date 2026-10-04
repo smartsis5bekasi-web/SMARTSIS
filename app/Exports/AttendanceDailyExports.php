@@ -4,6 +4,7 @@ namespace App\Exports;
 
 use App\Exports\Concerns\StylesSheet;
 use App\Models\Student;
+use App\Support\SchoolCalendar;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -26,6 +27,8 @@ class AttendanceDailyExports extends StringValueBinder implements FromCollection
 {
     use StylesSheet;
 
+    private ?SchoolCalendar $calendar = null;
+
     public function __construct(
         private readonly Carbon $date,
         private readonly ?int $classroomId = null,
@@ -43,6 +46,8 @@ class AttendanceDailyExports extends StringValueBinder implements FromCollection
      */
     public function collection(): Collection
     {
+        $calendar = $this->calendar();
+
         return Student::query()
             ->with(['classroom', 'attendances' => fn ($query) => $query->whereDate('date', $this->date->toDateString())])
             ->when($this->classroomId !== null, fn ($query) => $query->where('classroom_id', $this->classroomId))
@@ -51,16 +56,25 @@ class AttendanceDailyExports extends StringValueBinder implements FromCollection
                     ->where('name', 'like', '%'.$this->search.'%')
                     ->orWhere('nis', 'like', '%'.$this->search.'%'),
             ))
-            ->when($this->status === 'none', fn ($query) => $query->whereDoesntHave(
+            ->when($this->status === 'none', fn ($query) => $query->expectedOn($this->date, $calendar)->whereDoesntHave(
                 'attendances',
                 fn ($inner) => $inner->whereDate('date', $this->date->toDateString()),
             ))
-            ->when($this->status !== null && $this->status !== '' && $this->status !== 'none', fn ($query) => $query->whereHas(
+            ->when($this->status === 'holiday', fn ($query) => $query->onHoliday($this->date, $calendar)->whereDoesntHave(
+                'attendances',
+                fn ($inner) => $inner->whereDate('date', $this->date->toDateString()),
+            ))
+            ->when($this->status !== null && ! in_array($this->status, ['', 'none', 'holiday'], true), fn ($query) => $query->whereHas(
                 'attendances',
                 fn ($inner) => $inner->whereDate('date', $this->date->toDateString())->where('status', $this->status),
             ))
             ->orderBy('name')
             ->get();
+    }
+
+    private function calendar(): SchoolCalendar
+    {
+        return $this->calendar ??= SchoolCalendar::on($this->date);
     }
 
     /**
@@ -78,6 +92,7 @@ class AttendanceDailyExports extends StringValueBinder implements FromCollection
     public function map($row): array
     {
         $attendance = $row->attendances->first();
+        $holiday = $attendance === null ? $this->calendar()->holidayFor($row, $this->date) : null;
 
         return [
             $row->name,
@@ -85,8 +100,8 @@ class AttendanceDailyExports extends StringValueBinder implements FromCollection
             $row->classroom?->name,
             $attendance?->checked_in_at?->format('H:i'),
             $attendance?->checked_out_at?->format('H:i'),
-            $attendance?->status?->label() ?? 'Belum Absen',
-            $attendance?->note,
+            $attendance?->status?->label() ?? ($holiday !== null ? 'Libur' : 'Belum Absen'),
+            $attendance->note ?? $holiday?->name,
         ];
     }
 
