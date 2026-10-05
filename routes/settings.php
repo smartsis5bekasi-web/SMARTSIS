@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\UserRole;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'student.onboarded'])->group(function () {
@@ -15,10 +14,6 @@ Route::middleware(['auth', 'verified', 'student.onboarded'])->group(function () 
             'password.confirm',
         ])
         ->name('security.edit');
-
-    Route::livewire('settings/admin', 'pages::settings.admins')
-        ->middleware(['role:'.UserRole::SuperAdmin->value, 'password.confirm'])
-        ->name('admins.edit');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

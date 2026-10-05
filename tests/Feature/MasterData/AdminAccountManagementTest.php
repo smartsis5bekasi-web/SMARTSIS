@@ -5,45 +5,60 @@ use App\Models\User;
 use Database\Seeders\DemoAccountSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
 });
 
-test('a super admin can open the admin settings page', function () {
+test('a super admin can open the admin accounts page', function () {
     $this->actingAs(adminUser())
         ->withSession(['auth.password_confirmed_at' => time()])
-        ->get(route('admins.edit'))
+        ->get(route('master-data.admins'))
         ->assertSuccessful()
         ->assertSee('Tambah Admin');
 });
 
-test('the admin settings page asks for the password first', function () {
+test('the admin accounts page asks for the password first', function () {
     $this->actingAs(adminUser())
-        ->get(route('admins.edit'))
+        ->get(route('master-data.admins'))
         ->assertRedirect(route('password.confirm'));
 });
 
-test('only a super admin can open the admin settings page', function (UserRole $role) {
+test('only a super admin can open the admin accounts page', function (UserRole $role) {
     $this->actingAs(userWithRole($role))
         ->withSession(['auth.password_confirmed_at' => time()])
-        ->get(route('admins.edit'))
+        ->get(route('master-data.admins'))
         ->assertForbidden();
 })->with([
     'kepala sekolah' => UserRole::KepalaSekolah,
     'guru piket' => UserRole::GuruPiket,
 ]);
 
-test('the admin link is only shown to a super admin', function () {
-    $this->actingAs(adminUser())->get(route('profile.edit'))->assertSee(route('admins.edit'));
-    $this->actingAs(userWithRole(UserRole::GuruPiket))->get(route('profile.edit'))->assertDontSee(route('admins.edit'));
+test('the sidebar groups akun admin and manajemen peran under pengaturan lanjut', function () {
+    $this->actingAs(adminUser())
+        ->get(route('dashboard'))
+        ->assertSeeInOrder(['Pengaturan Lanjut', 'Akun Admin', 'Manajemen Peran'])
+        ->assertSee(route('master-data.admins'))
+        ->assertSee(route('master-data.roles.index'));
+});
+
+test('the sidebar hides pengaturan lanjut from staff without access', function () {
+    $this->actingAs(userWithRole(UserRole::GuruPiket))
+        ->get(route('dashboard'))
+        ->assertDontSee('Pengaturan Lanjut')
+        ->assertDontSee(route('master-data.admins'));
+});
+
+test('the admin page is no longer under settings', function () {
+    expect(Route::has('admins.edit'))->toBeFalse();
 });
 
 test('a super admin can add another admin by email', function () {
     $this->actingAs(adminUser());
 
-    Livewire::test('pages::settings.admins')
+    Livewire::test('pages::master-data.admins')
         ->set('name', 'Operator Sekolah')
         ->set('email', 'operator@sman5bekasi.sch.id')
         ->set('password', 'rahasia-sekolah')
@@ -65,7 +80,7 @@ test('the new admin form is validated', function (array $input, string $error) {
     User::factory()->create(['email' => 'taken@sman5bekasi.sch.id']);
     $this->actingAs(adminUser());
 
-    $component = Livewire::test('pages::settings.admins')
+    $component = Livewire::test('pages::master-data.admins')
         ->set('name', 'Operator')
         ->set('email', 'operator@sman5bekasi.sch.id')
         ->set('password', 'rahasia-sekolah')
@@ -88,7 +103,7 @@ test('another admin can have their access removed', function () {
     $this->actingAs(adminUser());
     $other = adminUser();
 
-    Livewire::test('pages::settings.admins')->call('removeAdmin', $other->id);
+    Livewire::test('pages::master-data.admins')->call('removeAdmin', $other->id);
 
     expect(User::find($other->id))->toBeNull();
 });
@@ -98,7 +113,7 @@ test('removing admin access keeps an account that still has another role', funct
     $teacher = userWithRole(UserRole::GuruPiket);
     $teacher->assignRole(UserRole::SuperAdmin->value);
 
-    Livewire::test('pages::settings.admins')->call('removeAdmin', $teacher->id);
+    Livewire::test('pages::master-data.admins')->call('removeAdmin', $teacher->id);
 
     expect($teacher->fresh()->hasRole(UserRole::SuperAdmin->value))->toBeFalse()
         ->and($teacher->fresh()->hasRole(UserRole::GuruPiket->value))->toBeTrue();
@@ -109,7 +124,7 @@ test('an admin cannot remove their own access', function () {
     adminUser();
     $this->actingAs($me);
 
-    Livewire::test('pages::settings.admins')->call('removeAdmin', $me->id);
+    Livewire::test('pages::master-data.admins')->call('removeAdmin', $me->id);
 
     expect($me->fresh()->hasRole(UserRole::SuperAdmin->value))->toBeTrue();
 });
@@ -120,7 +135,7 @@ test('other admins can be removed while an active admin remains', function () {
     $inactive->update(['is_active' => false]);
     $active = adminUser();
 
-    $component = Livewire::test('pages::settings.admins');
+    $component = Livewire::test('pages::master-data.admins');
 
     // Removing the other active admin leaves the signed-in one: allowed.
     $component->call('removeAdmin', $active->id);
@@ -139,7 +154,7 @@ test('the last active admin is protected when the signed-in account is not count
     $onlyActive = adminUser();
     $this->actingAs($me);
 
-    Livewire::test('pages::settings.admins')->call('removeAdmin', $onlyActive->id);
+    Livewire::test('pages::master-data.admins')->call('removeAdmin', $onlyActive->id);
 
     expect($onlyActive->fresh()->hasRole(UserRole::SuperAdmin->value))->toBeTrue();
 });
@@ -150,7 +165,7 @@ test('staff demo accounts still on the default password are flagged', function (
 
     User::query()->where('email', UserRole::GuruBk->value.'@smartsis.test')->sole()->update(['password' => 'sudah-diganti']);
 
-    Livewire::test('pages::settings.admins')
+    Livewire::test('pages::master-data.admins')
         ->assertSee('masih memakai password bawaan')
         ->assertSee(UserRole::SuperAdmin->value.'@smartsis.test')
         ->assertDontSee(UserRole::GuruBk->value.'@smartsis.test')
@@ -160,5 +175,5 @@ test('staff demo accounts still on the default password are flagged', function (
 test('no warning when no demo account uses the default password', function () {
     $this->actingAs(adminUser());
 
-    Livewire::test('pages::settings.admins')->assertDontSee('masih memakai password bawaan');
+    Livewire::test('pages::master-data.admins')->assertDontSee('masih memakai password bawaan');
 });

@@ -68,47 +68,64 @@
                         </div>
                     @endcanany
 
-                    @canany([\App\Enums\Permission::ManageMasterData->value, \App\Enums\Permission::ManageRole->value])
+                    @can(\App\Enums\Permission::ManageMasterData->value)
                         <div class="flex flex-col gap-1">
                             <p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{{ __('Master Data') }}</p>
-                            @can(\App\Enums\Permission::ManageMasterData->value)
-                                {{-- Siswa dan orang tua saling terkait, jadi dikelompokkan dalam satu submenu. --}}
-                                <flux:navlist.group
-                                    expandable
-                                    :heading="__('Siswa & Orang Tua')"
-                                    icon="users"
-                                    :expanded="request()->routeIs('master-data.students*') || request()->routeIs('master-data.parents*')"
-                                >
-                                    <flux:navlist.item :href="route('master-data.students.index')" :current="request()->routeIs('master-data.students*')">
-                                        {{ __('Data Siswa') }}
-                                    </flux:navlist.item>
-                                    <flux:navlist.item :href="route('master-data.parents.index')" :current="request()->routeIs('master-data.parents*')">
-                                        {{ __('Data Orang Tua') }}
-                                    </flux:navlist.item>
-                                </flux:navlist.group>
-                                <x-ui.sidebar-item icon="calendar-outline" :href="route('master-data.academic-years')" :active="request()->routeIs('master-data.academic-years*')">
-                                    {{ __('Tahun Ajaran') }}
-                                </x-ui.sidebar-item>
-                                <x-ui.sidebar-item icon="school-outline" :href="route('master-data.majors')" :active="request()->routeIs('master-data.majors*')">
-                                    {{ __('Jurusan') }}
-                                </x-ui.sidebar-item>
-                                <x-ui.sidebar-item icon="business-outline" :href="route('master-data.classrooms')" :active="request()->routeIs('master-data.classrooms*')">
-                                    {{ __('Kelas') }}
-                                </x-ui.sidebar-item>
-                                <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
-                                    {{ __('Guru') }}
-                                </x-ui.sidebar-item>
-                                <x-ui.sidebar-item icon="tablet-landscape-outline" :href="route('master-data.kiosk-accounts')" :active="request()->routeIs('master-data.kiosk-accounts*')">
-                                    {{ __('Akun Kiosk') }}
-                                </x-ui.sidebar-item>
-                            @endcan
-                            @can(\App\Enums\Permission::ManageRole->value)
-                                <x-ui.sidebar-item icon="shield-checkmark-outline" :href="route('master-data.roles.index')" :active="request()->routeIs('master-data.roles*')">
-                                    {{ __('Manajemen Peran') }}
-                                </x-ui.sidebar-item>
-                            @endcan
+                            {{-- Siswa dan orang tua saling terkait, jadi dikelompokkan dalam satu submenu. --}}
+                            <flux:navlist.group
+                                expandable
+                                :heading="__('Siswa & Orang Tua')"
+                                icon="users"
+                                :expanded="request()->routeIs('master-data.students*') || request()->routeIs('master-data.parents*')"
+                            >
+                                <flux:navlist.item :href="route('master-data.students.index')" :current="request()->routeIs('master-data.students*')">
+                                    {{ __('Data Siswa') }}
+                                </flux:navlist.item>
+                                <flux:navlist.item :href="route('master-data.parents.index')" :current="request()->routeIs('master-data.parents*')">
+                                    {{ __('Data Orang Tua') }}
+                                </flux:navlist.item>
+                            </flux:navlist.group>
+                            <x-ui.sidebar-item icon="calendar-outline" :href="route('master-data.academic-years')" :active="request()->routeIs('master-data.academic-years*')">
+                                {{ __('Tahun Ajaran') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="school-outline" :href="route('master-data.majors')" :active="request()->routeIs('master-data.majors*')">
+                                {{ __('Jurusan') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="business-outline" :href="route('master-data.classrooms')" :active="request()->routeIs('master-data.classrooms*')">
+                                {{ __('Kelas') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="people-outline" :href="route('master-data.teachers')" :active="request()->routeIs('master-data.teachers*')">
+                                {{ __('Guru') }}
+                            </x-ui.sidebar-item>
+                            <x-ui.sidebar-item icon="tablet-landscape-outline" :href="route('master-data.kiosk-accounts')" :active="request()->routeIs('master-data.kiosk-accounts*')">
+                                {{ __('Akun Kiosk') }}
+                            </x-ui.sidebar-item>
                         </div>
-                    @endcanany
+                    @endcan
+
+                    @if (auth()->user()->can(\App\Enums\Permission::ManageRole->value) || auth()->user()->hasRole(\App\Enums\UserRole::SuperAdmin->value))
+                        <div class="flex flex-col gap-1">
+                            {{-- Who can do what: admin accounts and the role matrix, tucked
+                                 into one group because they are rarely touched. --}}
+                            <flux:navlist.group
+                                expandable
+                                :heading="__('Pengaturan Lanjut')"
+                                icon="cog-6-tooth"
+                                :expanded="request()->routeIs('master-data.admins*') || request()->routeIs('master-data.roles*')"
+                            >
+                                @role(\App\Enums\UserRole::SuperAdmin->value)
+                                    <flux:navlist.item :href="route('master-data.admins')" :current="request()->routeIs('master-data.admins*')">
+                                        {{ __('Akun Admin') }}
+                                    </flux:navlist.item>
+                                @endrole
+                                @can(\App\Enums\Permission::ManageRole->value)
+                                    <flux:navlist.item :href="route('master-data.roles.index')" :current="request()->routeIs('master-data.roles*')">
+                                        {{ __('Manajemen Peran') }}
+                                    </flux:navlist.item>
+                                @endcan
+                            </flux:navlist.group>
+                        </div>
+                    @endif
                 </nav>
             </flux:sidebar.nav>
         </flux:sidebar>

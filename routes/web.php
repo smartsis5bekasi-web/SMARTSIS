@@ -57,6 +57,15 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('peran/{role}/edit', 'pages::master-data.roles.edit')->name('roles.edit');
         });
 
+    // Akun Admin hands out full access, so only a Super Admin may open it —
+    // and only after re-entering their password, like Settings → Security.
+    Route::middleware(['role:'.UserRole::SuperAdmin->value, 'password.confirm'])
+        ->prefix('master-data')
+        ->name('master-data.')
+        ->group(function () {
+            Route::livewire('admin', 'pages::master-data.admins')->name('admins');
+        });
+
     Route::middleware('role:'.UserRole::WaliKelas->value)
         ->prefix('wali-kelas')
         ->name('wali-kelas.')
