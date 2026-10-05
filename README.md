@@ -195,3 +195,9 @@ Read-only dan terikat pada anak yang terhubung.
 3. **Hak akses bisa berbeda dari tabel di atas** jika Super Admin sudah mengubahnya di
    "Manajemen Peran" — seeder hanya menerapkan bawaan pada role yang baru dibuat. Gunakan
    perintah `tinker` di bagian Matriks Hak Akses untuk melihat kondisi sebenarnya.
+
+Yang perlu diperhatikan untuk live dan deploy
+
+1. Saat deploy, jalankan php artisan migrate saja, jangan pakai --seed, karena seeder akan membuat ulang akun demo di server produksi.
+2. Setelah deploy, cek Data Kelas dan lengkapi tingkat kelas yang masih "Belum diisi".
+3. Menghapus libur yang tanggalnya sudah lewat tidak otomatis menandai siswa Menunggu Konfirmasi untuk hari itu. Kalau memang perlu, jalankan php artisan attendance:mark-pending --date=YYYY-MM-DD.

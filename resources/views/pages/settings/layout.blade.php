@@ -3,6 +3,9 @@
         <flux:navlist aria-label="{{ __('Settings') }}">
             <flux:navlist.item :href="route('profile.edit')" wire:navigate>{{ __('Profile') }}</flux:navlist.item>
             <flux:navlist.item :href="route('security.edit')" wire:navigate>{{ __('Security') }}</flux:navlist.item>
+            @if (auth()->user()?->hasRole(App\Enums\UserRole::SuperAdmin->value))
+                <flux:navlist.item :href="route('admins.edit')" wire:navigate>{{ __('Admin') }}</flux:navlist.item>
+            @endif
         </flux:navlist>
     </div>
 

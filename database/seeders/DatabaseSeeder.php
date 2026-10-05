@@ -10,7 +10,8 @@ class DatabaseSeeder extends Seeder
     use WithoutModelEvents;
 
     /**
-     * Seed the application's database.
+     * Seed the application's database. In production the demo seeder only
+     * adds the staff accounts ({@see DemoAccountSeeder}).
      */
     public function run(): void
     {
