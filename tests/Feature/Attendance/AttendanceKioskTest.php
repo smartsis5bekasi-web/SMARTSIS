@@ -8,6 +8,10 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
+
+    // Recording is only allowed inside the school-day window, so pin the clock
+    // to a morning on-time check-in instead of depending on when CI runs.
+    $this->travelTo(now()->setTime(7, 15));
 });
 
 test('a kiosk account lands on the kiosk after login instead of the dashboard', function () {

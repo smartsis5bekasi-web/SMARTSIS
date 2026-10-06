@@ -9,6 +9,10 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
+
+    // Recording is only allowed inside the school-day window, so pin the clock
+    // to a morning on-time check-in instead of depending on when CI runs.
+    $this->travelTo(now()->setTime(7, 15));
 });
 
 test('roles with attendance view access can open the monitoring page', function (UserRole $role) {
