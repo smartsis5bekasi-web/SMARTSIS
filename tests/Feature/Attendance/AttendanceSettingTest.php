@@ -131,3 +131,19 @@ test('the anytime override leaves the late threshold alone', function () {
     expect($setting->checkInStatus(now()->setTime(7, 10)))->toBe(AttendanceStatus::Hadir)
         ->and($setting->checkInStatus(now()->setTime(23, 43)))->toBe(AttendanceStatus::Terlambat);
 });
+
+test('self face registration is off on a fresh install', function () {
+    expect(AttendanceSetting::current()->allow_self_face_registration)->toBeFalse();
+});
+
+test('self face registration can be toggled from the admin page', function () {
+    $this->actingAs(userWithRole(UserRole::GuruPiket));
+
+    Livewire::test('pages::attendance.absensi.settings')
+        ->assertSet('allow_self_face_registration', false)
+        ->set('allow_self_face_registration', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(AttendanceSetting::current()->allow_self_face_registration)->toBeTrue();
+});

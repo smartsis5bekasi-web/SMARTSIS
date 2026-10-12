@@ -22,7 +22,9 @@ use Livewire\WithFileUploads;
 /**
  * Settings → Profile.
  *
- * Everyone edits their photo, name and email. Beyond that, which fields appear
+ * Everyone edits their name and email, and everyone but students their photo:
+ * a student's photo is the frame their face was registered from, so only the
+ * staff who register faces may replace it. Beyond that, which fields appear
  * follows the profile record behind the account, not the role name: a student
  * record brings gender/birth date/address, a teacher or parent record brings a
  * phone number, and an account with neither (super admin, staff) simply sees
@@ -86,6 +88,17 @@ new #[Title('Profile settings')] class extends Component {
     }
 
     /**
+     * Students cannot change their own photo: it is the face snapshot staff
+     * verified in person, and swapping it would let a student put a
+     * classmate's face on their record.
+     */
+    #[Computed]
+    public function photoLocked(): bool
+    {
+        return $this->student !== null;
+    }
+
+    /**
      * Whether a phone number belongs on this profile — teachers and parents
      * are reachable by phone, students are reached through their guardians.
      */
@@ -113,7 +126,7 @@ new #[Title('Profile settings')] class extends Component {
     {
         $rules = [
             ...$this->profileRules(Auth::id()),
-            'photo' => ['nullable', 'image', 'max:2048'],
+            'photo' => $this->photoLocked ? ['prohibited'] : ['nullable', 'image', 'max:2048'],
         ];
 
         if ($this->hasPhone) {
@@ -208,6 +221,8 @@ new #[Title('Profile settings')] class extends Component {
 
     public function removePhoto(): void
     {
+        abort_if($this->photoLocked, 403);
+
         $previousUrl = Auth::user()->avatarUrl();
 
         Auth::user()->storeAvatarUrl(null);
@@ -314,71 +329,88 @@ new #[Title('Profile settings')] class extends Component {
     <x-pages::settings.layout :heading="__('Profile')" :subheading="__('Perbarui foto dan data pribadi Anda')">
         <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
             {{-- Profile photo --}}
-            <div class="flex flex-col gap-2" x-data="{ preview: null }">
-                <flux:label>{{ __('Foto Profil') }}</flux:label>
-                <flux:text size="sm">{{ __('Maksimal 2MB. Format JPG, PNG, atau WEBP.') }}</flux:text>
-
-                <div class="mt-1 flex items-center gap-4">
-                    @php $avatarUrl = auth()->user()->avatarUrl(); @endphp
-
-                    <button
-                        type="button"
-                        x-on:click="$refs.photo.click()"
-                        class="h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-dashed border-primary-400 bg-gray-100 transition hover:border-primary-600"
-                        title="{{ __('Ganti foto') }}"
-                    >
-                        <img
-                            class="h-full w-full object-cover"
-                            @if ($avatarUrl) src="{{ $avatarUrl }}" @endif
-                            x-bind:src="preview ?? @js($avatarUrl)"
-                            x-show="preview !== null || @js($avatarUrl !== null)"
-                            @unless ($avatarUrl) style="display: none" @endunless
-                            alt="{{ auth()->user()->name }}"
-                        >
-
-                        <span
-                            class="flex h-full w-full items-center justify-center text-lg font-semibold text-gray-500"
-                            x-show="preview === null && @js($avatarUrl === null)"
-                            @if ($avatarUrl) style="display: none" @endif
-                        >{{ auth()->user()->initials() }}</span>
-                    </button>
-
-                    <div class="flex flex-col items-start gap-1">
-                        <flux:button size="sm" variant="filled" x-on:click="$refs.photo.click()">
-                            {{ __('Pilih foto') }}
-                        </flux:button>
-
-                        @if ($avatarUrl)
-                            <flux:button
-                                size="sm"
-                                variant="subtle"
-                                wire:click="removePhoto"
-                                wire:confirm="{{ __('Hapus foto profil?') }}"
-                            >
-                                {{ __('Hapus foto') }}
-                            </flux:button>
-                        @endif
+            @if ($this->photoLocked)
+                @php $avatarUrl = auth()->user()->avatarUrl(); @endphp
+                <div class="flex flex-col gap-2">
+                    <flux:label>{{ __('Foto Profil') }}</flux:label>
+                    <div class="mt-1 flex items-center gap-4">
+                        <div class="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-gray-100">
+                            @if ($avatarUrl)
+                                <img class="h-full w-full object-cover" src="{{ $avatarUrl }}" alt="{{ auth()->user()->name }}">
+                            @else
+                                <span class="flex h-full w-full items-center justify-center text-lg font-semibold text-gray-500">{{ auth()->user()->initials() }}</span>
+                            @endif
+                        </div>
+                        <flux:text size="sm">{{ __('Foto profil siswa diambil saat registrasi wajah dan hanya bisa diganti oleh wali kelas, guru, atau admin sekolah.') }}</flux:text>
                     </div>
                 </div>
+            @else
+                <div class="flex flex-col gap-2" x-data="{ preview: null }">
+                    <flux:label>{{ __('Foto Profil') }}</flux:label>
+                    <flux:text size="sm">{{ __('Maksimal 2MB. Format JPG, PNG, atau WEBP.') }}</flux:text>
 
-                <input
-                    type="file"
-                    wire:model="photo"
-                    x-ref="photo"
-                    class="hidden"
-                    accept="image/*"
-                    x-on:change="
-                        const file = $refs.photo.files[0];
-                        if (! file) { preview = null; return; }
-                        const reader = new FileReader();
-                        reader.onload = (event) => { preview = event.target.result; };
-                        reader.readAsDataURL(file);
-                    "
-                >
+                    <div class="mt-1 flex items-center gap-4">
+                        @php $avatarUrl = auth()->user()->avatarUrl(); @endphp
 
-                <flux:text size="sm" wire:loading wire:target="photo">{{ __('Mengunggah…') }}</flux:text>
-                <flux:error name="photo" />
-            </div>
+                        <button
+                            type="button"
+                            x-on:click="$refs.photo.click()"
+                            class="h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-dashed border-primary-400 bg-gray-100 transition hover:border-primary-600"
+                            title="{{ __('Ganti foto') }}"
+                        >
+                            <img
+                                class="h-full w-full object-cover"
+                                @if ($avatarUrl) src="{{ $avatarUrl }}" @endif
+                                x-bind:src="preview ?? @js($avatarUrl)"
+                                x-show="preview !== null || @js($avatarUrl !== null)"
+                                @unless ($avatarUrl) style="display: none" @endunless
+                                alt="{{ auth()->user()->name }}"
+                            >
+
+                            <span
+                                class="flex h-full w-full items-center justify-center text-lg font-semibold text-gray-500"
+                                x-show="preview === null && @js($avatarUrl === null)"
+                                @if ($avatarUrl) style="display: none" @endif
+                            >{{ auth()->user()->initials() }}</span>
+                        </button>
+
+                        <div class="flex flex-col items-start gap-1">
+                            <flux:button size="sm" variant="filled" x-on:click="$refs.photo.click()">
+                                {{ __('Pilih foto') }}
+                            </flux:button>
+
+                            @if ($avatarUrl)
+                                <flux:button
+                                    size="sm"
+                                    variant="subtle"
+                                    wire:click="removePhoto"
+                                    wire:confirm="{{ __('Hapus foto profil?') }}"
+                                >
+                                    {{ __('Hapus foto') }}
+                                </flux:button>
+                            @endif
+                        </div>
+                    </div>
+
+                    <input
+                        type="file"
+                        wire:model="photo"
+                        x-ref="photo"
+                        class="hidden"
+                        accept="image/*"
+                        x-on:change="
+                            const file = $refs.photo.files[0];
+                            if (! file) { preview = null; return; }
+                            const reader = new FileReader();
+                            reader.onload = (event) => { preview = event.target.result; };
+                            reader.readAsDataURL(file);
+                        "
+                    >
+
+                    <flux:text size="sm" wire:loading wire:target="photo">{{ __('Mengunggah…') }}</flux:text>
+                    <flux:error name="photo" />
+                </div>
+            @endif
 
             <flux:input wire:model="name" :label="__('Name')" type="text" required autocomplete="name" />
 

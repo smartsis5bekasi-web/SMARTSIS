@@ -132,6 +132,9 @@ new #[Title('Siswa')] class extends Component {
                 $query->whereHas('user', fn (Builder $uq) => $uq->where('is_active', $isActive)); })
             ->when($this->face === 'registered', fn (Builder $query) => $query->whereNotNull('face_descriptors'))
             ->when($this->face === 'missing', fn (Builder $query) => $query->whereNull('face_descriptors'))
+            ->when($this->face === 'unverified', fn (Builder $query) => $query
+                ->whereNotNull('face_descriptors')
+                ->where(fn (Builder $inner) => $inner->whereNull('face_registered_by')->orWhereColumn('face_registered_by', 'user_id')))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(10);
@@ -464,6 +467,7 @@ new #[Title('Siswa')] class extends Component {
                     <option value="">{{ __('Semua Wajah') }}</option>
                     <option value="registered">{{ __('Wajah Terdaftar') }}</option>
                     <option value="missing">{{ __('Wajah Belum Terdaftar') }}</option>
+                    <option value="unverified">{{ __('Terdaftar Mandiri (Belum Diverifikasi)') }}</option>
                 </select>
 
                 @if ($search !== '' || $classroomId !== '' || $majorId !== '' || $gender !== '' || $status !== '' || $face !== '')

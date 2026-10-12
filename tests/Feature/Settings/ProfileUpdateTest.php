@@ -113,11 +113,11 @@ test('a students account photo comes from their student record', function () {
     expect($user->avatarUrl())->toBe('/storage/students/foto.jpg');
 });
 
-test('uploading a photo writes it back to the student record, not a second copy', function () {
+test('uploading a photo writes it back to the teacher record, not a second copy', function () {
     Storage::fake('public');
 
-    $user = User::factory()->create();
-    $student = Student::factory()->create(['user_id' => $user->id]);
+    $teacher = Teacher::factory()->create();
+    $user = $teacher->user;
 
     $this->actingAs($user);
 
@@ -128,13 +128,49 @@ test('uploading a photo writes it back to the student record, not a second copy'
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
 
-    $student->refresh();
+    $teacher->refresh();
 
-    expect($student->avatar_url)->not->toBeNull()
+    expect($teacher->avatar_url)->not->toBeNull()
         ->and($user->refresh()->avatar_url)->toBeNull()
-        ->and($user->avatarUrl())->toBe($student->avatar_url);
+        ->and($user->avatarUrl())->toBe($teacher->avatar_url);
 
-    Storage::disk('public')->assertExists(Str::after($student->avatar_url, '/storage/'));
+    Storage::disk('public')->assertExists(Str::after($teacher->avatar_url, '/storage/'));
+});
+
+test('a student cannot replace or remove their registered photo', function () {
+    Storage::fake('public');
+
+    $user = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $user->id, 'avatar_url' => '/storage/students/face-1.jpg']);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::settings.profile')
+        ->assertSee(__('Foto profil siswa diambil saat registrasi wajah dan hanya bisa diganti oleh wali kelas, guru, atau admin sekolah.'))
+        ->assertDontSee(__('Pilih foto'))
+        ->set('photo', UploadedFile::fake()->image('friend.jpg'))
+        ->call('updateProfileInformation')
+        ->assertHasErrors(['photo' => 'prohibited']);
+
+    Livewire::test('pages::settings.profile')
+        ->call('removePhoto')
+        ->assertForbidden();
+
+    expect($student->refresh()->avatar_url)->toBe('/storage/students/face-1.jpg');
+});
+
+test('a student can still update the rest of their profile', function () {
+    $user = User::factory()->create();
+    $student = Student::factory()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::settings.profile')
+        ->set('address', 'Jl. Baru No. 5')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors();
+
+    expect($student->refresh()->address)->toBe('Jl. Baru No. 5');
 });
 
 test('an account with no profile record keeps its photo on the user row', function () {

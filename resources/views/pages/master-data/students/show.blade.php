@@ -13,7 +13,7 @@ new #[Title('Detail Siswa')] class extends Component {
 
     public function mount(Student $student): void
     {
-        $this->student = $student->load(['classroom.homeroomTeacher', 'major', 'parents', 'user']);
+        $this->student = $student->load(['classroom.homeroomTeacher', 'major', 'parents', 'user', 'faceRegisteredBy']);
     }
 
     public function openResetPasswordModal(): void
@@ -105,9 +105,15 @@ new #[Title('Detail Siswa')] class extends Component {
                     </span>
                 @endif
 
-                @if ($student->hasRegisteredFace())
-                    <span class="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
-                        <ion-icon name="scan-outline"></ion-icon> {{ __('Wajah Terdaftar') }}
+                @if ($student->hasStaffVerifiedFace())
+                    <span class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700"
+                        title="{{ __('Didaftarkan :name, :date', ['name' => $student->faceRegisteredBy?->name ?? __('petugas'), 'date' => $student->face_registered_at?->translatedFormat('d M Y H:i')]) }}">
+                        <ion-icon name="shield-checkmark-outline"></ion-icon> {{ __('Wajah Terverifikasi · :name', ['name' => $student->faceRegisteredBy?->name ?? __('petugas')]) }}
+                    </span>
+                @elseif ($student->hasRegisteredFace())
+                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700"
+                        title="{{ __('Didaftarkan mandiri oleh siswa tanpa pengawasan. Daftarkan ulang lewat Registrasi Wajah untuk memverifikasi.') }}">
+                        <ion-icon name="scan-outline"></ion-icon> {{ __('Wajah Terdaftar Mandiri') }}
                     </span>
                 @else
                     <span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">

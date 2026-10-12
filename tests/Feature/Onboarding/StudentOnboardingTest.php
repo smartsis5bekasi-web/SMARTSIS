@@ -1,14 +1,27 @@
 <?php
 
+use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
+use App\Models\AttendanceSetting;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
+/*
+| Most of this file walks the self-registration flow, so it is switched on
+| here; the tests at the bottom switch it back off (the shipped default) to
+| cover in-person registration.
+*/
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
+    AttendanceSetting::current()->update(['allow_self_face_registration' => true]);
 });
+
+function disallowSelfFaceRegistration(): void
+{
+    AttendanceSetting::current()->update(['allow_self_face_registration' => false]);
+}
 
 /**
  * @return array<int, array<int, float>>
@@ -420,4 +433,130 @@ test('the face step cannot be reopened before the nisn is verified', function ()
     Livewire::test('pages::onboarding.index')
         ->call('retakeFace')
         ->assertStatus(403);
+});
+
+test('a face already enrolled on another student is refused without naming them', function () {
+    Student::factory()->create(['name' => 'Teman Sekelas', 'face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors())
+        ->assertSet('step', 2)
+        ->assertDispatched('face-capture-rejected')
+        ->assertDispatched('swal', fn (string $name, array $params): bool => ! str_contains($params['text'] ?? '', 'Teman Sekelas'));
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('a self-registered face records the student as its source', function () {
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors());
+
+    expect($student->fresh())
+        ->face_registered_by->toBe($user->id)
+        ->hasStaffVerifiedFace()->toBeFalse();
+});
+
+test('a face verified by staff cannot be retaken from onboarding', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'face_descriptors' => fakeFaceDescriptors(),
+        'face_registered_at' => now(),
+        'face_registered_by' => $staff->id,
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 3)
+        ->assertDontSee('Ulangi Foto')
+        ->call('retakeFace')
+        ->assertForbidden();
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', [array_fill(0, 128, 0.25)])
+        ->assertForbidden();
+
+    expect($student->fresh()->face_registered_by)->toBe($staff->id);
+});
+
+test('with in-person registration the face step only explains where to go', function () {
+    disallowSelfFaceRegistration();
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->assertSee(__('Wajah didaftarkan langsung di sekolah'))
+        ->assertDontSee(__('Ambil Foto Wajah'))
+        ->call('storeFaceDescriptors', fakeFaceDescriptors())
+        ->assertForbidden();
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('with in-person registration a student finishes onboarding without a face and can use the app', function () {
+    disallowSelfFaceRegistration();
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('continueWithoutFace')
+        ->assertSet('step', 3)
+        ->assertDontSee('Ulangi Foto')
+        ->call('completeOnboarding')
+        ->assertRedirect(route('dashboard'));
+
+    expect($student->fresh()->onboarded_at)->not->toBeNull();
+
+    $this->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee(__('Wajah Anda belum terdaftar'));
+});
+
+test('the face step cannot be skipped while self-registration is on', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('continueWithoutFace')
+        ->assertForbidden();
+});
+
+test('a student whose face staff registered in person skips onboarding entirely', function () {
+    disallowSelfFaceRegistration();
+
+    $staff = userWithRole(UserRole::WaliKelas);
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->create(['user_id' => $user->id]);
+
+    app(RegisterStudentFace::class)->handle($student, fakeFaceDescriptors(), null, $staff);
+
+    expect($student->fresh())
+        ->hasStaffVerifiedFace()->toBeTrue()
+        ->needsOnboarding()->toBeFalse();
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertDontSee(__('Wajah Anda belum terdaftar'));
 });

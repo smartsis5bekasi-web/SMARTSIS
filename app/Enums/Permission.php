@@ -23,6 +23,7 @@ enum Permission: string
     case ViewAttendance = 'attendance.view';
     case ManageAttendance = 'attendance.manage';
     case UseAttendanceKiosk = 'attendance.kiosk';
+    case RegisterStudentFace = 'face.register';
 
     // Violations.
     case ViewViolation = 'violation.view';
@@ -65,6 +66,7 @@ enum Permission: string
             self::ViewAttendance => 'Lihat Absensi',
             self::ManageAttendance => 'Kelola Absensi',
             self::UseAttendanceKiosk => 'Mode Kiosk Absensi',
+            self::RegisterStudentFace => 'Daftarkan Wajah Siswa',
             self::ViewViolation => 'Lihat Pelanggaran',
             self::InputViolation => 'Catat Pelanggaran',
             self::ManageViolation => 'Kelola Pelanggaran',
@@ -96,6 +98,7 @@ enum Permission: string
             self::ViewAttendance => 'Membuka daftar dan rekap kehadiran.',
             self::ManageAttendance => 'Scan kiosk, koreksi status, dan pengaturan absensi.',
             self::UseAttendanceKiosk => 'Hanya membuka layar kiosk scan wajah, tanpa akses menu lain.',
+            self::RegisterStudentFace => 'Mendaftarkan dan mengganti wajah serta foto siswa secara langsung lewat mode registrasi kiosk. Wali kelas hanya untuk kelas binaannya.',
             self::ViewViolation => 'Membuka daftar dan detail pelanggaran.',
             self::InputViolation => 'Mencatat pelanggaran baru untuk siswa.',
             self::ManageViolation => 'Mengubah, menghapus, dan memverifikasi pelanggaran.',
@@ -123,7 +126,7 @@ enum Permission: string
         return match ($this) {
             self::ViewDashboard => 'Dashboard',
             self::ManageMasterData, self::ManageRole => 'Master Data',
-            self::ViewAttendance, self::ManageAttendance, self::UseAttendanceKiosk => 'Kehadiran',
+            self::ViewAttendance, self::ManageAttendance, self::UseAttendanceKiosk, self::RegisterStudentFace => 'Kehadiran',
             self::ViewViolation, self::InputViolation, self::ManageViolation => 'Pelanggaran',
             self::ViewPoint, self::ManagePoint => 'Poin Disiplin',
             self::ViewAchievement, self::RequestAchievement, self::EditAchievement, self::ManageAchievement => 'Prestasi',

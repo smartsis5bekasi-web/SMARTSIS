@@ -87,9 +87,20 @@ enum UserRole: string
         return match ($this) {
             self::SuperAdmin => Permission::values(),
 
-            self::KepalaSekolah, self::WakasekKesiswaan => self::permissionValues([
+            self::KepalaSekolah => self::permissionValues([
                 Permission::ViewDashboard,
                 Permission::ViewAttendance,
+                Permission::ViewViolation,
+                Permission::ViewPoint,
+                Permission::ViewAchievement,
+                Permission::ViewPermit,
+                Permission::ViewWarning,
+            ]),
+
+            self::WakasekKesiswaan => self::permissionValues([
+                Permission::ViewDashboard,
+                Permission::ViewAttendance,
+                Permission::RegisterStudentFace,
                 Permission::ViewViolation,
                 Permission::ViewPoint,
                 Permission::ViewAchievement,
@@ -100,6 +111,7 @@ enum UserRole: string
             self::GuruBk => self::permissionValues([
                 Permission::ViewDashboard,
                 Permission::ViewAttendance,
+                Permission::RegisterStudentFace,
                 Permission::ViewViolation,
                 Permission::ManageViolation,
                 Permission::ViewPoint,
@@ -116,6 +128,7 @@ enum UserRole: string
             self::WaliKelas => self::permissionValues([
                 Permission::ViewDashboard,
                 Permission::ViewAttendance,
+                Permission::RegisterStudentFace,
                 Permission::ViewViolation,
                 Permission::ViewPoint,
                 Permission::ViewAchievement,
@@ -127,6 +140,7 @@ enum UserRole: string
                 Permission::ViewDashboard,
                 Permission::ViewAttendance,
                 Permission::ManageAttendance,
+                Permission::RegisterStudentFace,
                 Permission::ViewViolation,
                 Permission::InputViolation,
                 Permission::ViewPoint,

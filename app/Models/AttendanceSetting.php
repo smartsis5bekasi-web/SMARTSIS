@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $late_after
  * @property string $check_out_after
  * @property bool $ignore_schedule
+ * @property bool $allow_self_face_registration
  * @property int $pending_alpha_after_days
  * @property int|null $late_rule_id
  * @property int|null $alpha_rule_id
@@ -31,6 +32,7 @@ class AttendanceSetting extends Model
         'late_after',
         'check_out_after',
         'ignore_schedule',
+        'allow_self_face_registration',
         'pending_alpha_after_days',
         'late_rule_id',
         'alpha_rule_id',
@@ -47,6 +49,7 @@ class AttendanceSetting extends Model
             'late_after' => '07:30:00',
             'check_out_after' => '15:00:00',
             'ignore_schedule' => false,
+            'allow_self_face_registration' => false,
             'pending_alpha_after_days' => 3,
         ]);
     }
@@ -158,6 +161,7 @@ class AttendanceSetting extends Model
     {
         return [
             'ignore_schedule' => 'boolean',
+            'allow_self_face_registration' => 'boolean',
             'pending_alpha_after_days' => 'integer',
         ];
     }

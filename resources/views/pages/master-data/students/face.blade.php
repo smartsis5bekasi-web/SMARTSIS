@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Student\RegisterStudentFace;
+use App\Exceptions\DuplicateFaceException;
 use App\Models\Student;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -22,7 +23,17 @@ new #[Title('Daftarkan Wajah Siswa')] class extends Component {
      */
     public function storeFaceDescriptors(array $descriptors, ?string $snapshot = null): void
     {
-        if (! app(RegisterStudentFace::class)->handle($this->student, $descriptors, $snapshot)) {
+        try {
+            $stored = app(RegisterStudentFace::class)->handle($this->student, $descriptors, $snapshot, auth()->user());
+        } catch (DuplicateFaceException $exception) {
+            $this->dispatch('face-capture-rejected');
+            $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->getMessage());
+
+            return;
+        }
+
+        if (! $stored) {
+            $this->dispatch('face-capture-rejected');
             $this->dispatch('swal', icon: 'error', title: __('Data wajah tidak valid. Silakan ulangi.'));
 
             return;

@@ -34,6 +34,11 @@
                                     {{ __('Absensi') }}
                                 </x-ui.sidebar-item>
                             @endcan
+                            @can(\App\Enums\Permission::RegisterStudentFace->value)
+                                <x-ui.sidebar-item icon="person-add-outline" :href="route('attendance.face-registration')" :active="request()->routeIs('attendance.face-registration')">
+                                    {{ __('Registrasi Wajah') }}
+                                </x-ui.sidebar-item>
+                            @endcan
                             @can(\App\Enums\Permission::ViewPoint->value)
                                 <x-ui.sidebar-item icon="star-outline" :href="route('attendance.points')" :active="request()->routeIs('attendance.points*')">
                                     {{ __('Point') }}

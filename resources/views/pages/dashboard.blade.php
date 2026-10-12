@@ -693,6 +693,15 @@ new #[Title('Dashboard')] class extends Component
 
     @if ($role === UserRole::Siswa && $this->student)
         @php($student = $this->student)
+        @unless ($student->hasRegisteredFace())
+            <div class="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+                <ion-icon name="scan-outline" class="mt-0.5 shrink-0 text-2xl"></ion-icon>
+                <div class="flex flex-col gap-1 text-sm">
+                    <span class="font-semibold">{{ __('Wajah Anda belum terdaftar') }}</span>
+                    <span>{{ __('Anda belum bisa absen dengan wajah. Datangi tablet kiosk sekolah bersama wali kelas atau petugas untuk mendaftarkan wajah.') }}</span>
+                </div>
+            </div>
+        @endunless
         <div class="rounded-xl border border-zinc-200 bg-white p-6">
             <flux:heading size="lg">{{ __('Profil Siswa') }}</flux:heading>
             <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

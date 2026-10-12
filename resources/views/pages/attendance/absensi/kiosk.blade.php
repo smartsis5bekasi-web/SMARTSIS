@@ -67,6 +67,10 @@ new #[Layout('layouts::kiosk')] #[Title('Kiosk Absensi')] class extends Componen
                 <ion-icon name="expand-outline" class="text-xl"></ion-icon>
             </button>
 
+            <x-ui.button variant="secondary" icon="person-add-outline" :href="route('attendance.face-registration', array_filter(['kelas' => $classroomId]))">
+                {{ __('Registrasi Wajah') }}
+            </x-ui.button>
+
             @if ($this->isStaff())
                 <x-ui.button variant="secondary" icon="arrow-back-outline" :href="route('attendance.absensi.scan', array_filter(['kelas' => $classroomId]))">
                     {{ __('Keluar Kiosk') }}

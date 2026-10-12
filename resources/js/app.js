@@ -51,10 +51,20 @@ window.confirmDelete = function confirmDelete(onConfirm, options = {}) {
  * Redirect flows use realrashid/sweet-alert instead: call toast()/alert() in
  * PHP and the @include('sweetalert::alert') in the layouts renders it after
  * navigation.
+ *
+ * Passing `text` turns the toast into a dialog the user has to dismiss, for
+ * refusals that need more than a glance:
+ *   $this->dispatch('swal', icon: 'error', title: __('Gagal'), text: $reason);
  */
 window.addEventListener('swal', (event) => {
     const detail = (Array.isArray(event.detail) ? event.detail[0] : event.detail) ?? {};
-    const { icon = 'success', title = '' } = detail;
+    const { icon = 'success', title = '', text = '' } = detail;
+
+    if (text) {
+        window.Swal.fire({ icon, title, text, confirmButtonText: 'OK' });
+
+        return;
+    }
 
     window.Swal.fire({
         toast: true,

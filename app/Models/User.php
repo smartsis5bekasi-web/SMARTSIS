@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\Permission;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -117,6 +118,33 @@ class User extends Authenticatable implements PasskeyUser
         }
 
         return null;
+    }
+
+    /**
+     * Whether this account may register or replace student faces (and with
+     * them the profile photo), from the kiosk registration mode or the admin
+     * page.
+     */
+    public function canRegisterStudentFaces(): bool
+    {
+        return $this->can(Permission::RegisterStudentFace->value)
+            || $this->can(Permission::ManageMasterData->value);
+    }
+
+    /**
+     * Whether that covers every student. School-wide roles do; anyone else
+     * holding the permission — a wali kelas — is limited to their homeroom
+     * classes ({@see Student::scopeFaceRegistrableBy()}).
+     */
+    public function registersFacesForEveryStudent(): bool
+    {
+        return $this->can(Permission::ManageMasterData->value)
+            || $this->hasAnyRole([
+                UserRole::SuperAdmin->value,
+                UserRole::WakasekKesiswaan->value,
+                UserRole::GuruBk->value,
+                UserRole::GuruPiket->value,
+            ]);
     }
 
     /**

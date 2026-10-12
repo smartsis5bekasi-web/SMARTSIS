@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $nisn_verified_at
  * @property array<int, array<int, float>>|null $face_descriptors
  * @property Carbon|null $face_registered_at
+ * @property int|null $face_registered_by
  * @property Carbon|null $onboarded_at
  */
 class Student extends Model
@@ -66,6 +67,7 @@ class Student extends Model
         'nisn_verified_at',
         'face_descriptors',
         'face_registered_at',
+        'face_registered_by',
         'onboarded_at',
     ];
 
@@ -95,14 +97,62 @@ class Student extends Model
     }
 
     /**
+     * Whether the stored face was captured by a staff member in person (kiosk
+     * registration or the admin page) rather than by the student alone.
+     */
+    public function hasStaffVerifiedFace(): bool
+    {
+        return $this->hasRegisteredFace()
+            && $this->face_registered_by !== null
+            && $this->face_registered_by !== $this->user_id;
+    }
+
+    /**
      * Whether the student still has to go through onboarding before using the
-     * app. The face template is mandatory because the classroom kiosk
-     * identifies students by face, so a student who finished onboarding back
-     * when the face step could be skipped is sent back to register one.
+     * app.
+     *
+     * While self-registration is allowed the face is part of onboarding, so a
+     * student without one is sent back to register it. When faces are only
+     * registered in person, a student cannot do anything about a missing face
+     * from their own device, so it no longer holds them out of the app.
      */
     public function needsOnboarding(): bool
     {
-        return ! $this->hasCompletedOnboarding() || ! $this->hasRegisteredFace();
+        if (! $this->hasCompletedOnboarding()) {
+            return true;
+        }
+
+        return ! $this->hasRegisteredFace() && AttendanceSetting::current()->allow_self_face_registration;
+    }
+
+    /**
+     * Narrow to the students whose face the given staff member may register:
+     * everyone for school-wide roles, the homeroom classes for a wali kelas,
+     * and nobody for an account without the permission.
+     *
+     * @param  Builder<Student>  $query
+     */
+    public function scopeFaceRegistrableBy(Builder $query, User $user): void
+    {
+        if (! $user->canRegisterStudentFaces()) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        if ($user->registersFacesForEveryStudent()) {
+            return;
+        }
+
+        $teacher = $user->teacher;
+
+        if ($teacher === null) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->whereIn('classroom_id', $teacher->homeroomClassrooms()->select('id'));
     }
 
     /**
@@ -177,6 +227,16 @@ class Student extends Model
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);
+    }
+
+    /**
+     * The account that captured the stored face template.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function faceRegisteredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'face_registered_by');
     }
 
     /**

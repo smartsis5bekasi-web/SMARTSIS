@@ -96,6 +96,11 @@ Route::middleware(['auth', 'verified', 'student.onboarded', 'active.account'])->
             Route::livewire('kiosk', 'pages::attendance.absensi.kiosk')
                 ->middleware('permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value)
                 ->name('absensi.kiosk');
+            // In-person face enrolment. A kiosk device account may open it but
+            // stays locked until staff unlock it with their own credentials.
+            Route::livewire('registrasi-wajah', 'pages::attendance.face-registration')
+                ->middleware('permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value.'|'.Permission::RegisterStudentFace->value.'|'.Permission::ManageMasterData->value)
+                ->name('face-registration');
             Route::get('absensi/face-templates', FaceTemplateController::class)
                 ->middleware('role_or_permission:'.Permission::ManageAttendance->value.'|'.Permission::UseAttendanceKiosk->value.'|'.UserRole::Siswa->value)
                 ->name('absensi.face-templates');

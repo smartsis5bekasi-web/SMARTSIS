@@ -5,10 +5,13 @@
 // Models are self-hosted in /public/models/face-api so the app works on the
 // school LAN without internet access.
 //
-// The onboarding page (pages::onboarding.index) and the admin "Daftarkan Wajah"
-// page (pages::master-data.students.face) call window.SmartsisFace.start() from
+// The onboarding page (pages::onboarding.index), the admin "Daftarkan Wajah"
+// page (pages::master-data.students.face) and the kiosk registration mode
+// (pages::attendance.face-registration) call window.SmartsisFace.start() from
 // an Alpine x-init, and receive the captured descriptors back through
-// $wire.storeFaceDescriptors().
+// $wire.storeFaceDescriptors(). When the server refuses a capture (malformed,
+// or a face already enrolled on another student) it dispatches
+// `face-capture-rejected` and the camera comes back for another try.
 
 import * as faceapi from '@vladmandic/face-api';
 
@@ -27,6 +30,12 @@ const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
 let modelsReady = null;
 let mediaStream = null;
 let detectLoopId = null;
+
+// Bumped by every start(). The kiosk registration mode starts a new capture
+// for each student, so loops and camera prompts from an earlier one must
+// notice they are stale and stop instead of fighting over the camera.
+let currentSession = 0;
+let onRejected = null;
 
 /**
  * Load the three nets, reporting each one as it lands.
@@ -106,6 +115,16 @@ window.SmartsisFace = {
      * @param {{ storeFaceDescriptors: (samples: number[][]) => Promise<void> }} wire  Livewire $wire proxy.
      */
     async start(container, wire) {
+        const session = ++currentSession;
+        stopCamera();
+
+        if (onRejected) {
+            window.removeEventListener('face-capture-rejected', onRejected);
+            onRejected = null;
+        }
+
+        const isCurrent = () => session === currentSession && container.isConnected;
+
         const video = container.querySelector('[data-face-video]');
         const statusEl = container.querySelector('[data-face-status]');
         const captureButton = container.querySelector('[data-face-capture]');
@@ -146,23 +165,40 @@ window.SmartsisFace = {
         // camera prompt is still open.
         modelsPromise.catch(() => {});
 
-        try {
-            setStatus('Menyalakan kamera…');
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-                audio: false,
-            });
-            video.srcObject = mediaStream;
-            await video.play();
-        } catch (error) {
-            console.error('[SmartsisFace]', error);
-            setStatus(
-                error?.name === 'NotAllowedError'
-                    ? 'Akses kamera ditolak. Izinkan kamera pada browser lalu muat ulang halaman.'
-                    : 'Kamera tidak tersedia. Pastikan perangkat memiliki kamera lalu muat ulang halaman.',
-                'error',
-            );
+        const openCamera = async () => {
+            try {
+                setStatus('Menyalakan kamera…');
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                    audio: false,
+                });
 
+                // A newer capture started while the permission prompt was open.
+                if (!isCurrent()) {
+                    stream.getTracks().forEach((track) => track.stop());
+
+                    return false;
+                }
+
+                mediaStream = stream;
+                video.srcObject = mediaStream;
+                await video.play();
+
+                return true;
+            } catch (error) {
+                console.error('[SmartsisFace]', error);
+                setStatus(
+                    error?.name === 'NotAllowedError'
+                        ? 'Akses kamera ditolak. Izinkan kamera pada browser lalu muat ulang halaman.'
+                        : 'Kamera tidak tersedia. Pastikan perangkat memiliki kamera lalu muat ulang halaman.',
+                    'error',
+                );
+
+                return false;
+            }
+        };
+
+        if (!(await openCamera())) {
             return;
         }
 
@@ -178,8 +214,10 @@ window.SmartsisFace = {
             return;
         }
 
-        if (!mediaStream || !container.isConnected) {
-            stopCamera();
+        if (!mediaStream || !isCurrent()) {
+            if (session === currentSession) {
+                stopCamera();
+            }
 
             return;
         }
@@ -187,7 +225,7 @@ window.SmartsisFace = {
         // Lightweight presence loop: keeps the status + button in sync with
         // whether a face is currently in frame.
         const detectLoop = async () => {
-            if (!mediaStream) {
+            if (!mediaStream || session !== currentSession) {
                 return;
             }
 
@@ -206,6 +244,23 @@ window.SmartsisFace = {
         };
 
         detectLoop();
+
+        // The server refused the capture: clear it and bring the camera back.
+        onRejected = async () => {
+            if (!isCurrent()) {
+                return;
+            }
+
+            samples.length = 0;
+            snapshot = null;
+            busy = false;
+            refreshUi();
+
+            if (await openCamera()) {
+                detectLoop();
+            }
+        };
+        window.addEventListener('face-capture-rejected', onRejected);
 
         captureButton.addEventListener('click', async () => {
             if (busy || samples.length >= SAMPLES_NEEDED) {

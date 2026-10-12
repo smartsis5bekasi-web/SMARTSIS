@@ -20,6 +20,8 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
     public bool $ignore_schedule = false;
 
+    public bool $allow_self_face_registration = false;
+
     public ?int $late_rule_id = null;
 
     public ?int $alpha_rule_id = null;
@@ -33,6 +35,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
         $this->late_after = substr($this->setting->late_after, 0, 5);
         $this->check_out_after = substr($this->setting->check_out_after, 0, 5);
         $this->ignore_schedule = $this->setting->ignore_schedule;
+        $this->allow_self_face_registration = $this->setting->allow_self_face_registration;
         $this->late_rule_id = $this->setting->late_rule_id;
         $this->alpha_rule_id = $this->setting->alpha_rule_id;
         $this->pending_alpha_after_days = $this->setting->pending_alpha_after_days;
@@ -65,6 +68,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
             'late_after' => ['required', 'date_format:H:i', 'after:check_in_start'],
             'check_out_after' => ['required', 'date_format:H:i', 'after:late_after'],
             'ignore_schedule' => ['boolean'],
+            'allow_self_face_registration' => ['boolean'],
             'late_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
             'alpha_rule_id' => ['nullable', 'integer', 'exists:point_rules,id'],
             'pending_alpha_after_days' => ['required', 'integer', 'min:0', 'max:30'],
@@ -201,6 +205,34 @@ new #[Title('Pengaturan Absensi')] class extends Component {
                     </span>
                 @endif
                 @error('ignore_schedule')
+                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
+                @enderror
+            </div>
+        </div>
+
+        <div @class([
+            'mb-8 flex items-start gap-4 rounded-lg border p-4',
+            'border-amber-300 bg-amber-50' => $allow_self_face_registration,
+            'border-gray-200 bg-gray-50' => ! $allow_self_face_registration,
+        ])>
+            <label class="relative mt-0.5 inline-flex shrink-0 cursor-pointer items-center">
+                <input type="checkbox" wire:model.live="allow_self_face_registration" class="peer sr-only">
+                <div class="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-amber-500 peer-focus:ring-2 peer-focus:ring-amber-300"></div>
+                <div class="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></div>
+            </label>
+
+            <div class="flex flex-col">
+                <span class="font-semibold text-gray-700">{{ __('Izinkan Siswa Mendaftarkan Wajah Sendiri') }}</span>
+                <span class="mt-1 text-xs text-gray-500">
+                    {{ __('Mati (disarankan): wajah hanya didaftarkan di sekolah lewat menu Registrasi Wajah di kiosk, didampingi wali kelas atau petugas. Siswa yang belum terdaftar tetap bisa memakai aplikasi, tetapi belum bisa absen dengan wajah.') }}
+                </span>
+                @if ($allow_self_face_registration)
+                    <span class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                        <ion-icon name="warning-outline" class="text-sm"></ion-icon>
+                        {{ __('Siswa mendaftar tanpa pengawasan lewat HP-nya sendiri, sehingga wajah orang lain bisa didaftarkan ke akunnya.') }}
+                    </span>
+                @endif
+                @error('allow_self_face_registration')
                     <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
                 @enderror
             </div>

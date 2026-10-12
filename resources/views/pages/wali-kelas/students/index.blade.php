@@ -46,6 +46,11 @@ new #[Title('Siswa Kelas')] class extends Component {
 <div class="flex h-full w-full flex-1 flex-col gap-6">
     <x-ui.page-header :title="__('Siswa Kelas')" :subtitle="__('Kelola siswa di kelas perwalian Anda.')">
         <x-slot:actions>
+            @can(\App\Enums\Permission::RegisterStudentFace->value)
+                <x-ui.button variant="secondary" icon="person-add-outline" :href="route('attendance.face-registration')">
+                    {{ __('Registrasi Wajah') }}
+                </x-ui.button>
+            @endcan
             <x-ui.button variant="primary" icon="add-outline" :href="route('wali-kelas.students.create')" wire:navigate>
                 {{ __('Tambah') }}
             </x-ui.button>

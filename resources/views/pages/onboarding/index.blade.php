@@ -2,6 +2,8 @@
 
 use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
+use App\Exceptions\DuplicateFaceException;
+use App\Models\AttendanceSetting;
 use App\Models\Student;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -44,6 +46,17 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     public function student(): ?Student
     {
         return auth()->user()->student()->with(['classroom', 'major'])->first();
+    }
+
+    /**
+     * Whether the student may capture their own face here. When off (the
+     * default), faces are registered in person at the kiosk, and the face
+     * step only tells the student where to go.
+     */
+    #[Computed]
+    public function selfRegistrationAllowed(): bool
+    {
+        return AttendanceSetting::current()->allow_self_face_registration;
     }
 
     /**
@@ -95,9 +108,23 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     public function storeFaceDescriptors(array $descriptors, ?string $snapshot = null): void
     {
         $student = auth()->user()->student;
-        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
+        abort_unless($student !== null && $student->hasVerifiedNisn() && $this->selfRegistrationAllowed, 403);
 
-        if (! app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot)) {
+        // A face a staff member verified in person is not overwritten by an
+        // unsupervised capture.
+        abort_if($student->hasStaffVerifiedFace(), 403);
+
+        try {
+            $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, auth()->user());
+        } catch (DuplicateFaceException $exception) {
+            $this->dispatch('face-capture-rejected');
+            $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->forStudent());
+
+            return;
+        }
+
+        if (! $stored) {
+            $this->dispatch('face-capture-rejected');
             $this->dispatch('swal', icon: 'error', title: __('Data wajah tidak valid. Silakan ulangi.'));
 
             return;
@@ -117,9 +144,22 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     public function retakeFace(): void
     {
         $student = auth()->user()->student;
-        abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
+        abort_unless($student !== null && $student->hasVerifiedNisn() && $this->selfRegistrationAllowed, 403);
+        abort_if($student->hasStaffVerifiedFace(), 403);
 
         $this->step = 2;
+    }
+
+    /**
+     * Step 2 → 3 when faces are registered in person: there is nothing to
+     * capture here, the step only explains where to go.
+     */
+    public function continueWithoutFace(): void
+    {
+        $student = auth()->user()->student;
+        abort_unless($student !== null && $student->hasVerifiedNisn() && ! $this->selfRegistrationAllowed, 403);
+
+        $this->step = 3;
     }
 
     /**
@@ -136,15 +176,17 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
     /**
      * Step 3 — student confirms their identity; onboarding is complete.
-     * The face template is mandatory: the classroom kiosk identifies students
-     * by face, so a student without one could never be marked present there.
+     * While self-registration is on the face template is mandatory: the
+     * classroom kiosk identifies students by face, so a student without one
+     * could never be marked present there. Otherwise the face is registered
+     * later, in person, and is not the student's to provide here.
      */
     public function completeOnboarding(): void
     {
         $student = auth()->user()->student;
         abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
-        if (! $student->hasRegisteredFace()) {
+        if (! $student->hasRegisteredFace() && $this->selfRegistrationAllowed) {
             $this->step = 2;
             $this->dispatch('swal', icon: 'error', title: __('Daftarkan wajah Anda terlebih dahulu.'));
 
@@ -167,7 +209,9 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     {
         return [
             1 => ['title' => __('Verifikasi NISN'), 'subtitle' => __('Cocokkan NISN dengan data sekolah')],
-            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => __('Wajib, untuk absensi wajah di kelas')],
+            2 => ['title' => __('Registrasi Wajah'), 'subtitle' => $this->selfRegistrationAllowed
+                ? __('Wajib, untuk absensi wajah di kelas')
+                : __('Dilakukan di sekolah bersama wali kelas')],
             3 => ['title' => __('Konfirmasi Data'), 'subtitle' => __('Periksa data dan selesaikan')],
         ];
     }
@@ -252,6 +296,21 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                         <span wire:loading wire:target="verifyNisn">{{ __('Memeriksa…') }}</span>
                     </x-ui.button>
                 </form>
+            @elseif ($step === 2 && ! $this->selfRegistrationAllowed)
+                <div class="flex flex-col gap-6">
+                    <div class="flex items-start gap-3 rounded-xl border border-primary-100 bg-primary-50 p-5 text-primary-800">
+                        <ion-icon name="scan-outline" class="mt-0.5 shrink-0 text-2xl"></ion-icon>
+                        <div class="flex flex-col gap-2 text-sm">
+                            <span class="font-semibold">{{ __('Wajah didaftarkan langsung di sekolah') }}</span>
+                            <span>{{ __('Supaya absensi wajah tidak bisa dipakai orang lain, pendaftaran wajah dilakukan di tablet kiosk sekolah dengan didampingi wali kelas atau petugas.') }}</span>
+                            <span>{{ __('Sebelum wajah terdaftar, Anda tetap bisa memakai SMARTSIS, tetapi belum bisa absen dengan wajah.') }}</span>
+                        </div>
+                    </div>
+
+                    <x-ui.button variant="primary" icon-trailing="arrow-forward-outline" wire:click="continueWithoutFace" class="w-full">
+                        {{ __('Mengerti, Lanjut') }}
+                    </x-ui.button>
+                </div>
             @elseif ($step === 2)
                 @php($isRetake = (bool) $this->student?->hasRegisteredFace())
                 <div wire:key="face-capture" x-data x-init="window.SmartsisFace.start($el, $wire)" class="flex flex-col">
@@ -347,9 +406,14 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                         </dl>
                     </div>
 
+                    @php($canRetake = $this->selfRegistrationAllowed && ! $student?->hasStaffVerifiedFace())
                     <p class="text-sm text-gray-500">
                         {{ __('Pastikan data di atas benar milik Anda. Jika ada yang tidak sesuai, hubungi admin sekolah.') }}
-                        {{ __('Foto wajah buram atau kurang jelas? Tekan “Ulangi Foto” untuk mengambil ulang.') }}
+                        @if ($canRetake)
+                            {{ __('Foto wajah buram atau kurang jelas? Tekan “Ulangi Foto” untuk mengambil ulang.') }}
+                        @elseif (! $student?->hasRegisteredFace())
+                            {{ __('Jangan lupa daftarkan wajah Anda di tablet kiosk sekolah bersama wali kelas.') }}
+                        @endif
                     </p>
 
                     <div class="flex flex-col gap-3 sm:flex-row-reverse">
@@ -358,9 +422,11 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                             <span wire:loading wire:target="completeOnboarding">{{ __('Menyimpan…') }}</span>
                         </x-ui.button>
 
-                        <x-ui.button variant="secondary" icon="camera-reverse-outline" wire:click="retakeFace" class="w-full sm:w-auto">
-                            {{ __('Ulangi Foto') }}
-                        </x-ui.button>
+                        @if ($canRetake)
+                            <x-ui.button variant="secondary" icon="camera-reverse-outline" wire:click="retakeFace" class="w-full sm:w-auto">
+                                {{ __('Ulangi Foto') }}
+                            </x-ui.button>
+                        @endif
                     </div>
                 </div>
             @endif

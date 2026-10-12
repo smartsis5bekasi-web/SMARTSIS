@@ -89,3 +89,58 @@ test('the student list can be filtered by face registration', function () {
         ->assertSee($registered->name)
         ->assertDontSee($missing->name);
 });
+
+test('a face registered from the admin page is recorded as staff-verified', function () {
+    $admin = adminUser();
+    $student = Student::factory()->create(['user_id' => userWithRole(UserRole::Siswa)->id]);
+
+    $this->actingAs($admin);
+
+    Livewire::test('pages::master-data.students.face', ['student' => $student])
+        ->call('storeFaceDescriptors', adminCapturedDescriptors());
+
+    expect($student->fresh())
+        ->face_registered_by->toBe($admin->id)
+        ->hasStaffVerifiedFace()->toBeTrue()
+        ->needsOnboarding()->toBeFalse();
+});
+
+test('the admin page refuses a face that belongs to another student', function () {
+    Student::factory()->create(['name' => 'Pemilik Wajah', 'face_descriptors' => adminCapturedDescriptors(), 'face_registered_at' => now()]);
+    $student = Student::factory()->create(['face_descriptors' => null]);
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::master-data.students.face', ['student' => $student])
+        ->call('storeFaceDescriptors', adminCapturedDescriptors())
+        ->assertNoRedirect()
+        ->assertDispatched('face-capture-rejected')
+        ->assertDispatched('swal', fn (string $name, array $params): bool => str_contains($params['text'] ?? '', 'Pemilik Wajah'));
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('self-registered faces can be listed for re-verification', function () {
+    $siswa = userWithRole(UserRole::Siswa);
+    $self = Student::factory()->onboarded()->create(['name' => 'Daftar Sendiri', 'user_id' => $siswa->id, 'face_registered_by' => $siswa->id]);
+    $legacy = Student::factory()->onboarded()->create(['name' => 'Data Lama']);
+    $verified = Student::factory()->onboarded()->create(['name' => 'Sudah Diverifikasi', 'face_registered_by' => adminUser()->id]);
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::master-data.students.index')
+        ->set('face', 'unverified')
+        ->assertSee($self->name)
+        ->assertSee($legacy->name)
+        ->assertDontSee($verified->name);
+});
+
+test('the student detail shows who verified the face', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $student = Student::factory()->onboarded()->create(['face_registered_by' => $staff->id]);
+
+    $this->actingAs(adminUser())
+        ->get(route('master-data.students.show', $student))
+        ->assertOk()
+        ->assertSee(__('Wajah Terverifikasi · :name', ['name' => $staff->name]));
+});
