@@ -5,6 +5,7 @@ use App\Models\Classroom;
 use App\Models\Major;
 use App\Models\ParentGuardian;
 use App\Models\Student;
+use App\Models\Teacher;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -108,6 +109,36 @@ test('editing updates the student', function () {
     expect($student->refresh())
         ->name->toBe('Baru')
         ->classroom_id->toBe($newClassroom->id);
+});
+
+test('the student forms show the wali kelas of the chosen kelas, read-only', function () {
+    $homeroomA = Teacher::factory()->create(['name' => 'Bu Wali A']);
+    $homeroomB = Teacher::factory()->create(['name' => 'Pak Wali B']);
+    $classroomA = Classroom::factory()->create(['homeroom_teacher_id' => $homeroomA->id]);
+    $classroomB = Classroom::factory()->create(['homeroom_teacher_id' => $homeroomB->id]);
+    $student = Student::factory()->create(['classroom_id' => $classroomA->id]);
+
+    Livewire::test('pages::master-data.students.edit', ['student' => $student])
+        ->assertSee('Bu Wali A')
+        ->assertDontSee(__('Pilih guru'))
+        ->set('classroom_id', $classroomB->id)
+        ->assertSee('Pak Wali B');
+
+    Livewire::test('pages::master-data.students.create')
+        ->set('classroom_id', $classroomA->id)
+        ->assertSee('Bu Wali A');
+});
+
+test('the student detail page shows the wali kelas from the kelas', function () {
+    $homeroom = Teacher::factory()->create(['name' => 'Bu Wali Kelas Asli']);
+    $otherTeacher = Teacher::factory()->create(['name' => 'Guru Lain Lama']);
+    $classroom = Classroom::factory()->create(['homeroom_teacher_id' => $homeroom->id]);
+    $student = Student::factory()->create(['classroom_id' => $classroom->id, 'teacher_id' => $otherTeacher->id]);
+
+    $this->get(route('master-data.students.show', $student))
+        ->assertOk()
+        ->assertSee('Bu Wali Kelas Asli')
+        ->assertDontSee('Guru Lain Lama');
 });
 
 test('replacing the avatar deletes the previous file', function () {

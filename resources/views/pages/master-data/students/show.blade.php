@@ -13,7 +13,7 @@ new #[Title('Detail Siswa')] class extends Component {
 
     public function mount(Student $student): void
     {
-        $this->student = $student->load(['classroom', 'major', 'teacher', 'parents', 'user']);
+        $this->student = $student->load(['classroom.homeroomTeacher', 'major', 'parents', 'user']);
     }
 
     public function openResetPasswordModal(): void
@@ -158,7 +158,7 @@ new #[Title('Detail Siswa')] class extends Component {
 
                 <div class="flex flex-col gap-1">
                     <span class="text-xs font-medium text-gray-500">{{ __('Wali Kelas') }}</span>
-                    <span class="text-sm text-gray-800">{{ $student->teacher?->name ?? '—' }}</span>
+                    <span class="text-sm text-gray-800">{{ $student->classroom?->homeroomTeacher?->name ?? '—' }}</span>
                 </div>
 
                 <div class="flex flex-col gap-1 sm:col-span-2">

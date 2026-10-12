@@ -142,11 +142,9 @@ test('the teacher edit form preloads every field', function () {
 
 test('the student edit form preloads every field, including the relation ids', function () {
     $classroom = Classroom::factory()->create();
-    $teacher = Teacher::factory()->create();
     $student = Student::factory()->create([
         'classroom_id' => $classroom->id,
         'major_id' => $classroom->major_id,
-        'teacher_id' => $teacher->id,
     ]);
 
     Livewire::test('pages::master-data.students.edit', ['student' => $student])
@@ -157,8 +155,7 @@ test('the student edit form preloads every field, including the relation ids', f
         ->assertSet('birth_date', $student->birth_date->format('Y-m-d'))
         ->assertSet('address', $student->address)
         ->assertSet('classroom_id', $classroom->id)
-        ->assertSet('major_id', $classroom->major_id)
-        ->assertSet('teacher_id', $teacher->id);
+        ->assertSet('major_id', $classroom->major_id);
 });
 
 test('a student imported without a login account can still be saved', function () {
@@ -234,7 +231,6 @@ test('a rejected teacher form keeps the input that was already filled', function
 
 test('a rejected student form keeps the input that was already filled', function () {
     $classroom = Classroom::factory()->create();
-    $teacher = Teacher::factory()->create();
 
     Livewire::test('pages::master-data.students.create')
         ->set('name', 'Siswa Demo')
@@ -243,13 +239,11 @@ test('a rejected student form keeps the input that was already filled', function
         ->set('birth_date', now()->subYears(16)->format('Y-m-d'))
         ->set('classroom_id', $classroom->id)
         ->set('major_id', $classroom->major_id)
-        ->set('teacher_id', $teacher->id)
         ->call('save')
         ->assertHasErrors(['nis' => 'required'])
         ->assertSet('name', 'Siswa Demo')
         ->assertSet('email', 'siswa@smartsis.test')
         ->assertSet('gender', 'L')
         ->assertSet('classroom_id', $classroom->id)
-        ->assertSet('major_id', $classroom->major_id)
-        ->assertSet('teacher_id', $teacher->id);
+        ->assertSet('major_id', $classroom->major_id);
 });

@@ -5,7 +5,6 @@ use App\Models\Classroom;
 use App\Models\Major;
 use App\Models\ParentGuardian;
 use App\Models\Student;
-use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -42,8 +41,6 @@ new #[Title('Tambah Siswa')] class extends Component {
 
     public ?int $major_id = null;
 
-    public ?int $teacher_id = null;
-
     public ?TemporaryUploadedFile $avatar = null;
 
     /**
@@ -70,7 +67,6 @@ new #[Title('Tambah Siswa')] class extends Component {
             'address' => ['nullable', 'string', 'max:255'],
             'classroom_id' => ['required', Rule::exists('classrooms', 'id')],
             'major_id' => ['nullable', Rule::exists('majors', 'id')],
-            'teacher_id' => ['nullable', Rule::exists('teachers', 'id')],
             'avatar' => ['nullable', 'image', 'max:2048'],
             'parents' => ['array'],
         ];
@@ -191,7 +187,7 @@ new #[Title('Tambah Siswa')] class extends Component {
     #[Computed]
     public function classroomOptions(): Collection
     {
-        return Classroom::query()->orderBy('name')->get();
+        return Classroom::query()->with('homeroomTeacher')->orderBy('name')->get();
     }
 
     /**
@@ -204,12 +200,13 @@ new #[Title('Tambah Siswa')] class extends Component {
     }
 
     /**
-     * @return Collection<int, Teacher>
+     * The chosen kelas's wali kelas. The siswa ↔ wali kelas link lives on the
+     * kelas (homeroom_teacher_id), so the form only shows it, read-only.
      */
     #[Computed]
-    public function teacherOptions(): Collection
+    public function homeroomTeacherName(): ?string
     {
-        return Teacher::query()->orderBy('name')->get();
+        return $this->classroomOptions->firstWhere('id', $this->classroom_id)?->homeroomTeacher?->name;
     }
 
     /**
@@ -362,7 +359,7 @@ new #[Title('Tambah Siswa')] class extends Component {
             
             <div class="flex flex-col">
                 <label class="mb-1 font-semibold text-gray-600">{{ __('Kelas') }} <span class="text-red-500">*</span></label>
-                <x-slim-select wire:model="classroom_id" placeholder="{{ __('Pilih kelas') }}">
+                <x-slim-select wire:model.live="classroom_id" placeholder="{{ __('Pilih kelas') }}">
                     <option value="">{{ __('Pilih kelas') }}</option>
                     @foreach ($this->classroomOptions as $class)
                         <option value="{{ $class->id }}">{{ $class->name }}</option>
@@ -387,16 +384,9 @@ new #[Title('Tambah Siswa')] class extends Component {
             </div>
 
             <div class="flex flex-col">
-                <label class="mb-1 font-semibold text-gray-600">{{ __('Guru') }}</label>
-                <x-slim-select wire:model="teacher_id" placeholder="{{ __('Pilih guru') }}">
-                    <option value="">{{ __('Pilih guru') }}</option>
-                    @foreach ($this->teacherOptions as $teacher)
-                        <option value="{{ $teacher->id }}">{{ $teacher->name }}</option>
-                    @endforeach
-                </x-slim-select>
-                @error('teacher_id')
-                    <span class="mt-1 text-sm text-red-500">{{ $message }}</span>
-                @enderror
+                <label class="mb-1 font-semibold text-gray-600">{{ __('Wali Kelas') }}</label>
+                <div class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 text-gray-800">{{ $this->homeroomTeacherName ?? '—' }}</div>
+                <span class="mt-1 text-xs text-gray-500">{{ __('Mengikuti wali kelas pada data Kelas. Ubah lewat menu Kelas.') }}</span>
             </div>
 
             <div class="flex flex-col">
