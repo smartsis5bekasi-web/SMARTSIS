@@ -2,9 +2,12 @@
 
 namespace App\Actions\Student;
 
+use App\Enums\FaceConflictResolution;
 use App\Exceptions\DuplicateFaceException;
 use App\Models\Student;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -34,23 +37,55 @@ class RegisterStudentFace
     private const DUPLICATE_DISTANCE = 0.5;
 
     /**
+     * Below this the two templates are, for all practical purposes, the same
+     * face. Between this and {@see self::DUPLICATE_DISTANCE} two different
+     * students can genuinely land — siblings, or two look-alikes caught by the
+     * same tablet under the same light — so staff may keep both after
+     * comparing the photos.
+     */
+    private const SAME_PERSON_DISTANCE = 0.4;
+
+    /**
      * @param  array<int, mixed>  $descriptors  one to three samples of 128 floats
      * @param  string|null  $snapshot  a `data:image/jpeg;base64,…` string
      * @param  User|null  $registeredBy  who captured it; staff other than the student marks the face as verified in person
+     * @param  int|null  $confirmedOwnerId  the look-alike student staff already compared photos with and chose to resolve
      * @return bool false when the descriptors are malformed and nothing was stored
      *
-     * @throws DuplicateFaceException when the face is already enrolled on another student
+     * @throws DuplicateFaceException when the face is already enrolled on another student and that was not confirmed
      */
-    public function handle(Student $student, array $descriptors, ?string $snapshot = null, ?User $registeredBy = null): bool
+    public function handle(Student $student, array $descriptors, ?string $snapshot = null, ?User $registeredBy = null, ?int $confirmedOwnerId = null): bool
     {
         if (! $this->isValid($descriptors)) {
             return false;
         }
 
-        $owner = $this->findLookAlike($descriptors, $student);
+        $isStaffCapture = $registeredBy !== null && $registeredBy->id !== $student->user_id;
+        $lookAlikes = $this->findLookAlikes($descriptors, $student);
+        $resolution = null;
 
-        if ($owner !== null) {
-            throw new DuplicateFaceException($owner);
+        if ($lookAlikes !== []) {
+            ['student' => $owner, 'distance' => $distance] = $lookAlikes[0];
+
+            // A second look-alike means the capture itself is suspect (a
+            // blurred or badly lit frame sits close to everyone), so it is
+            // never resolvable.
+            $resolution = $isStaffCapture && count($lookAlikes) === 1
+                ? $this->resolutionFor($owner, $distance)
+                : null;
+
+            if ($resolution === null || $owner->id !== $confirmedOwnerId) {
+                Log::info('Face registration matched another student.', [
+                    'student_id' => $student->id,
+                    'owner_id' => $owner->id,
+                    'distance' => round($distance, 4),
+                    'look_alikes' => count($lookAlikes),
+                    'registered_by' => $registeredBy?->id,
+                    'resolution' => $resolution?->value,
+                ]);
+
+                throw new DuplicateFaceException($owner->load('classroom:id,name'), $distance, $resolution);
+            }
         }
 
         $attributes = [
@@ -63,14 +98,44 @@ class RegisterStudentFace
         // Staff saw the student in person, which is a stronger identity check
         // than the NISN the onboarding asks for, so there is nothing left for
         // the student to do on first login.
-        if ($registeredBy !== null && $registeredBy->id !== $student->user_id) {
+        if ($isStaffCapture) {
             $attributes['nisn_verified_at'] = $student->nisn_verified_at ?? now();
             $attributes['onboarded_at'] = $student->onboarded_at ?? now();
         }
 
-        $student->update($attributes);
+        DB::transaction(function () use ($student, $attributes, $resolution, $lookAlikes, $registeredBy): void {
+            if ($resolution === FaceConflictResolution::Transfer) {
+                $owner = $lookAlikes[0]['student'];
+
+                $owner->update([
+                    'face_descriptors' => null,
+                    'face_registered_at' => null,
+                    'face_registered_by' => null,
+                ]);
+
+                Log::info('Self-registered face moved to the student verified in person.', [
+                    'from_student_id' => $owner->id,
+                    'to_student_id' => $student->id,
+                    'registered_by' => $registeredBy->id,
+                ]);
+            }
+
+            $student->update($attributes);
+        });
 
         return true;
+    }
+
+    /**
+     * How staff may go ahead despite the look-alike, or null when they may not.
+     */
+    private function resolutionFor(Student $owner, float $distance): ?FaceConflictResolution
+    {
+        if (! $owner->hasStaffVerifiedFace()) {
+            return FaceConflictResolution::Transfer;
+        }
+
+        return $distance >= self::SAME_PERSON_DISTANCE ? FaceConflictResolution::KeepBoth : null;
     }
 
     /**
@@ -86,35 +151,38 @@ class RegisterStudentFace
     }
 
     /**
-     * The other student whose stored template is closest to the capture, when
-     * it is close enough to be the same face.
+     * Every other student with a stored template close enough to be the same
+     * face, closest first.
      *
      * @param  array<int, array<int, float|int>>  $descriptors
+     * @return list<array{student: Student, distance: float}>
      */
-    private function findLookAlike(array $descriptors, Student $student): ?Student
+    private function findLookAlikes(array $descriptors, Student $student): array
     {
-        $closest = null;
-        $closestDistance = self::DUPLICATE_DISTANCE;
+        $lookAlikes = [];
 
         Student::query()
             ->whereNotNull('face_descriptors')
             ->whereKeyNot($student->getKey())
-            ->select(['id', 'name', 'classroom_id', 'face_descriptors'])
+            ->select(['id', 'name', 'classroom_id', 'user_id', 'avatar_url', 'face_descriptors', 'face_registered_at', 'face_registered_by'])
             ->lazyById(200)
-            ->each(function (Student $candidate) use ($descriptors, &$closest, &$closestDistance): void {
+            ->each(function (Student $candidate) use ($descriptors, &$lookAlikes): void {
+                $closest = INF;
+
                 foreach ($candidate->face_descriptors ?? [] as $stored) {
                     foreach ($descriptors as $captured) {
-                        $distance = $this->distance($captured, $stored);
-
-                        if ($distance < $closestDistance) {
-                            $closest = $candidate;
-                            $closestDistance = $distance;
-                        }
+                        $closest = min($closest, $this->distance($captured, $stored));
                     }
+                }
+
+                if ($closest < self::DUPLICATE_DISTANCE) {
+                    $lookAlikes[] = ['student' => $candidate, 'distance' => $closest];
                 }
             });
 
-        return $closest?->load('classroom:id,name');
+        usort($lookAlikes, fn (array $a, array $b): int => $a['distance'] <=> $b['distance']);
+
+        return $lookAlikes;
     }
 
     /**

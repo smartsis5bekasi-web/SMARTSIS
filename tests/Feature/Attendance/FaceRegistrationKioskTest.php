@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FaceConflictResolution;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\Classroom;
@@ -178,7 +179,20 @@ test('registering at the kiosk stores a staff-verified face and completes onboar
         ->and($student->needsOnboarding())->toBeFalse();
 });
 
-test('a face already enrolled on another student is refused and names them for staff', function () {
+/**
+ * The given sample nudged by exactly `$distance` (Euclidean) on one value.
+ *
+ * @param  array<int, array<int, float>>  $sample
+ * @return array<int, array<int, float>>
+ */
+function lookAlikeOf(array $sample, float $distance): array
+{
+    $sample[0][0] += $distance;
+
+    return $sample;
+}
+
+test('a face already enrolled on another student is held back next to their photo', function () {
     Student::factory()->create(['name' => 'Siswa Pertama', 'face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now()]);
     $student = Student::factory()->create();
 
@@ -187,11 +201,125 @@ test('a face already enrolled on another student is refused and names them for s
         ->call('selectStudent', $student->id)
         ->call('storeFaceDescriptors', kioskFaceSample(7))
         ->assertSet('selectedStudentId', $student->id)
-        ->assertDispatched('face-capture-rejected')
-        ->assertDispatched('swal', fn (string $name, array $params): bool => str_contains($params['text'] ?? '', 'Siswa Pertama'));
+        ->assertSet('faceConflict.name', 'Siswa Pertama')
+        ->assertNotDispatched('face-capture-rejected')
+        ->assertSee(__('Wajah mirip dengan siswa lain'))
+        ->assertSee('Siswa Pertama');
 
     expect($student->fresh()->hasRegisteredFace())->toBeFalse();
 });
+
+test('staff can move a self-registered face to the student in front of the camera', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $ownerUser = userWithRole(UserRole::Siswa);
+    $owner = Student::factory()->create(['user_id' => $ownerUser->id, 'face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $ownerUser->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSet('faceConflict.resolution', FaceConflictResolution::Transfer->value)
+        ->assertSee(__('Pindahkan ke :student', ['student' => $student->name]))
+        ->call('confirmFaceConflict')
+        ->assertSet('faceConflict', null)
+        ->assertSet('selectedStudentId', null)
+        ->assertDispatched('swal', fn (string $name, array $params): bool => $params['icon'] === 'success');
+
+    expect($student->fresh())
+        ->hasStaffVerifiedFace()->toBeTrue()
+        ->face_registered_by->toBe($staff->id)
+        ->and($owner->fresh())
+        ->hasRegisteredFace()->toBeFalse()
+        ->face_registered_by->toBeNull();
+});
+
+test('staff can keep two look-alike students that were both verified in person', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $owner = Student::factory()->create(['face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', lookAlikeOf(kioskFaceSample(7), 0.45))
+        ->assertSet('faceConflict.resolution', FaceConflictResolution::KeepBoth->value)
+        ->call('confirmFaceConflict')
+        ->assertSet('faceConflict', null)
+        ->assertSet('selectedStudentId', null);
+
+    expect($student->fresh()->hasStaffVerifiedFace())->toBeTrue()
+        ->and($owner->fresh()->face_descriptors)->toEqual(kioskFaceSample(7));
+});
+
+test('a near-identical face already verified by staff cannot be kept twice', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    Student::factory()->create(['face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', lookAlikeOf(kioskFaceSample(7), 0.2))
+        ->assertSet('faceConflict.resolution', null)
+        ->assertDontSee(__('Orang berbeda, tetap simpan'))
+        ->call('confirmFaceConflict')
+        ->assertDispatched('face-capture-rejected')
+        ->assertSet('selectedStudentId', $student->id);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('a capture close to two students is never resolvable', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), 0.42), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), -0.44), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSet('faceConflict.resolution', null);
+});
+
+test('cancelling the look-alike dialog brings the camera back', function () {
+    Student::factory()->create(['face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now()]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs(userWithRole(UserRole::GuruPiket))
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->call('dismissFaceConflict')
+        ->assertSet('faceConflict', null)
+        ->assertSet('pendingCaptureKey', null)
+        ->assertDispatched('face-capture-rejected')
+        ->call('confirmFaceConflict')
+        ->assertSet('selectedStudentId', $student->id);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('the dialog can switch to the other student to retake their face', function () {
+    $owner = Student::factory()->create(['face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now()]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs(userWithRole(UserRole::GuruPiket))
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSee(__('Daftarkan ulang wajah :name', ['name' => $owner->name]))
+        ->call('reRegisterConflictOwner')
+        ->assertSet('selectedStudentId', $owner->id)
+        ->assertSet('faceConflict', null);
+});
+
+test('the look-alike decision cannot be forged from the browser', function () {
+    Livewire::actingAs(userWithRole(UserRole::GuruPiket))
+        ->test('pages::attendance.face-registration')
+        ->set('faceConflict', ['owner_id' => 1, 'resolution' => 'keep-both']);
+})->throws(CannotUpdateLockedPropertyException::class);
 
 test('re-registering the same student replaces their own face without a duplicate error', function () {
     $student = Student::factory()->create(['face_descriptors' => kioskFaceSample(3), 'face_registered_at' => now()]);

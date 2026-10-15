@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Enums\FaceConflictResolution;
 use App\Models\Student;
 use RuntimeException;
 
@@ -12,11 +13,17 @@ use RuntimeException;
  *
  * The message names the other student, so it is only for staff screens; a
  * student registering their own face is shown {@see self::forStudent()}.
+ *
+ * {@see self::$resolution} is how staff may still go ahead after comparing the
+ * two photos, or null when the capture has to be refused outright.
  */
 class DuplicateFaceException extends RuntimeException
 {
-    public function __construct(public readonly Student $owner)
-    {
+    public function __construct(
+        public readonly Student $owner,
+        public readonly float $distance = 0.0,
+        public readonly ?FaceConflictResolution $resolution = null,
+    ) {
         parent::__construct(__('Wajah ini sudah terdaftar atas nama :name (:classroom). Pastikan siswa yang difoto benar, atau perbarui data wajah :name terlebih dahulu.', [
             'name' => $owner->name,
             'classroom' => $owner->classroom->name ?? __('tanpa kelas'),

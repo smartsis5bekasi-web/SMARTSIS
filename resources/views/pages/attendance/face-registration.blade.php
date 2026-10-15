@@ -1,8 +1,7 @@
 <?php
 
-use App\Actions\Student\RegisterStudentFace;
 use App\Enums\Permission;
-use App\Exceptions\DuplicateFaceException;
+use App\Livewire\Concerns\ResolvesFaceConflicts;
 use App\Models\Classroom;
 use App\Models\Student;
 use App\Models\User;
@@ -30,6 +29,8 @@ use Livewire\Component;
  * that unlock lapses after {@see self::IDLE_MINUTES} without a registration.
  */
 new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Component {
+    use ResolvesFaceConflicts;
+
     /** Minutes a credential unlock survives without a registration. */
     private const IDLE_MINUTES = 15;
 
@@ -248,6 +249,7 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
             return;
         }
 
+        $this->forgetPendingCapture();
         $this->reset('operatorId', 'unlockedUntil', 'selectedStudentId', 'search');
         unset($this->operator);
     }
@@ -271,20 +273,50 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
             return;
         }
 
+        $this->forgetPendingCapture();
         $this->selectedStudentId = $this->scopedStudents($operator)->findOrFail($studentId)->id;
         unset($this->selectedStudent);
     }
 
     public function clearSelection(): void
     {
+        $this->forgetPendingCapture();
         $this->selectedStudentId = null;
         unset($this->selectedStudent);
     }
 
     public function updatedClassroomId(): void
     {
+        $this->forgetPendingCapture();
         $this->normaliseClassroom();
         $this->selectedStudentId = null;
+    }
+
+    /**
+     * Whether the student the held-back capture ran into is one this operator
+     * may register, so the dialog can offer to fix that record first.
+     */
+    public function canReRegisterConflictOwner(): bool
+    {
+        $operator = $this->operator;
+        $ownerId = $this->faceConflict['owner_id'] ?? null;
+
+        return $operator !== null && $ownerId !== null && $this->scopedStudents($operator)->whereKey($ownerId)->exists();
+    }
+
+    /**
+     * Switch to the other student so their (wrong) face can be re-taken with
+     * them in front of the camera.
+     */
+    public function reRegisterConflictOwner(): void
+    {
+        $ownerId = $this->faceConflict['owner_id'] ?? null;
+
+        if ($ownerId === null || ! $this->canReRegisterConflictOwner()) {
+            return;
+        }
+
+        $this->selectStudent($ownerId);
     }
 
     /**
@@ -296,6 +328,20 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
      */
     public function storeFaceDescriptors(array $descriptors, ?string $snapshot = null): void
     {
+        $this->forgetPendingCapture();
+        $this->registerFace($descriptors, $snapshot);
+    }
+
+    protected function faceCaptureStudent(): ?Student
+    {
+        return $this->selectedStudent;
+    }
+
+    /**
+     * @param  array<int, array<int, float|int>>  $descriptors
+     */
+    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): void
+    {
         $operator = $this->requireOperator();
         $student = $this->selectedStudent;
 
@@ -305,19 +351,7 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
             return;
         }
 
-        try {
-            $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, $operator);
-        } catch (DuplicateFaceException $exception) {
-            $this->dispatch('face-capture-rejected');
-            $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->getMessage());
-
-            return;
-        }
-
-        if (! $stored) {
-            $this->dispatch('face-capture-rejected');
-            $this->dispatch('swal', icon: 'error', title: __('Data wajah tidak valid. Silakan ulangi.'));
-
+        if (! $this->attemptFaceRegistration($student, $operator, $descriptors, $snapshot, $confirmedOwnerId)) {
             return;
         }
 
@@ -487,6 +521,16 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
                             {{ __('Ambil Foto Wajah') }}
                         </x-ui.button>
                     </div>
+
+                    @if ($faceConflict !== null)
+                        <x-face-conflict-dialog :conflict="$faceConflict" :snapshot="$this->pendingSnapshot" :student-name="$student->name">
+                            @if ($this->canReRegisterConflictOwner())
+                                <x-ui.button variant="secondary" icon="refresh-outline" class="w-full" wire:click="reRegisterConflictOwner">
+                                    {{ __('Daftarkan ulang wajah :name', ['name' => $faceConflict['name']]) }}
+                                </x-ui.button>
+                            @endif
+                        </x-face-conflict-dialog>
+                    @endif
 
                     <ul class="flex list-disc flex-col gap-1 pl-5 text-sm text-gray-600">
                         <li>{{ __('Pastikan yang berdiri di depan kamera benar siswa di atas — cocokkan dengan kartu pelajar bila perlu.') }}</li>

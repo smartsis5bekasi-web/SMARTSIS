@@ -1,7 +1,7 @@
 // SMARTSIS — Smart Attendance kiosk (PRD F-09/F-10).
 //
 // Continuous loop: detect a face → match it against every registered student
-// template (1:N, face-api FaceMatcher) → confirm the face is a live person, not
+// template (1:N, see identify()) → confirm the face is a live person, not
 // a photo (PRD 8.5 liveness) → hand the matched student id to the Livewire
 // page, which records check-in/check-out.
 //
@@ -23,6 +23,12 @@ const MODEL_URL = '/models/face-api';
 
 // face-api convention: descriptors of the same person sit below ~0.5–0.6.
 const MATCH_THRESHOLD = 0.5;
+
+// Two look-alike students may both sit under MATCH_THRESHOLD (registration
+// lets staff keep both after comparing photos). When the runner-up is this
+// close to the best match the kiosk refuses to pick one rather than record the
+// wrong student.
+const AMBIGUITY_MARGIN = 0.06;
 
 // A face must match the same student on this many consecutive frames before
 // the confirm phase starts (guards against one-frame mismatches).
@@ -119,6 +125,43 @@ function loadModels(onProgress) {
     });
 
     return modelsReady;
+}
+
+/**
+ * Who the descriptor belongs to: a student id, 'unknown' when nobody is close
+ * enough, or 'ambiguous' when two students are about equally close.
+ *
+ * Same distance as face-api's FaceMatcher (mean over a student's samples),
+ * but it also tracks the runner-up, which FaceMatcher throws away.
+ *
+ * @param {Array<{ label: string, descriptors: Float32Array[] }>} templates
+ * @param {Float32Array} descriptor
+ * @returns {string}
+ */
+function identify(templates, descriptor) {
+    let bestLabel = 'unknown';
+    let bestDistance = Infinity;
+    let runnerUpDistance = Infinity;
+
+    for (const { label, descriptors } of templates) {
+        const distance =
+            descriptors.reduce((sum, sample) => sum + faceapi.euclideanDistance(sample, descriptor), 0) /
+            descriptors.length;
+
+        if (distance < bestDistance) {
+            runnerUpDistance = bestDistance;
+            bestDistance = distance;
+            bestLabel = label;
+        } else if (distance < runnerUpDistance) {
+            runnerUpDistance = distance;
+        }
+    }
+
+    if (bestDistance >= MATCH_THRESHOLD) {
+        return 'unknown';
+    }
+
+    return runnerUpDistance - bestDistance < AMBIGUITY_MARGIN ? 'ambiguous' : bestLabel;
 }
 
 /**
@@ -425,16 +468,12 @@ window.SmartsisAttendance = {
             return;
         }
 
-        const matcher = new faceapi.FaceMatcher(
-            students.map(
-                (student) =>
-                    new faceapi.LabeledFaceDescriptors(
-                        String(student.id),
-                        student.descriptors.map((sample) => new Float32Array(sample)),
-                    ),
-            ),
-            MATCH_THRESHOLD,
-        );
+        const templates = students
+            .filter((student) => student.descriptors.length > 0)
+            .map((student) => ({
+                label: String(student.id),
+                descriptors: student.descriptors.map((sample) => new Float32Array(sample)),
+            }));
 
         const byId = new Map(students.map((student) => [String(student.id), student]));
 
@@ -516,12 +555,18 @@ window.SmartsisAttendance = {
                 } else if (!confirming) {
                     // Phase 1 — identify the face.
                     missedFrames = 0;
-                    const match = matcher.findBestMatch(result.descriptor);
+                    const label = identify(templates, result.descriptor);
 
-                    if (match.label === 'unknown') {
+                    if (label === 'unknown') {
                         resetScan();
                         setStatus('Wajah tidak dikenali. Pastikan wajah Anda sudah terdaftar.', 'warning');
-                    } else if (match.label === matchedId) {
+                    } else if (label === 'ambiguous') {
+                        resetScan();
+                        setStatus(
+                            'Wajah mirip dengan lebih dari satu siswa. Hadap lurus ke kamera, atau absen dari akun masing-masing.',
+                            'warning',
+                        );
+                    } else if (label === matchedId) {
                         stableFrames++;
 
                         if (stableFrames >= STABLE_FRAMES_NEEDED) {
@@ -533,10 +578,10 @@ window.SmartsisAttendance = {
                             setStatus(`${byId.get(matchedId).name} terdeteksi. Tetap lihat kamera…`, 'success');
                         }
                     } else {
-                        matchedId = match.label;
+                        matchedId = label;
                         stableFrames = 1;
-                        showIdentity(byId.get(match.label));
-                        setStatus(`Memverifikasi ${byId.get(match.label).name}…`);
+                        showIdentity(byId.get(label));
+                        setStatus(`Memverifikasi ${byId.get(label).name}…`);
                     }
                 } else {
                     // Phase 2 — passive liveness on the identified face.
@@ -576,7 +621,7 @@ window.SmartsisAttendance = {
                             .withFaceDescriptor();
 
                         const stillMatches =
-                            verified && matcher.findBestMatch(verified.descriptor).label === matchedId;
+                            verified && identify(templates, verified.descriptor) === matchedId;
 
                         resetScan();
 

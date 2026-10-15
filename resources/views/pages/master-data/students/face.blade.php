@@ -1,12 +1,13 @@
 <?php
 
-use App\Actions\Student\RegisterStudentFace;
-use App\Exceptions\DuplicateFaceException;
+use App\Livewire\Concerns\ResolvesFaceConflicts;
 use App\Models\Student;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Daftarkan Wajah Siswa')] class extends Component {
+    use ResolvesFaceConflicts;
+
     public Student $student;
 
     public function mount(Student $student): void
@@ -23,19 +24,21 @@ new #[Title('Daftarkan Wajah Siswa')] class extends Component {
      */
     public function storeFaceDescriptors(array $descriptors, ?string $snapshot = null): void
     {
-        try {
-            $stored = app(RegisterStudentFace::class)->handle($this->student, $descriptors, $snapshot, auth()->user());
-        } catch (DuplicateFaceException $exception) {
-            $this->dispatch('face-capture-rejected');
-            $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->getMessage());
+        $this->forgetPendingCapture();
+        $this->registerFace($descriptors, $snapshot);
+    }
 
-            return;
-        }
+    protected function faceCaptureStudent(): ?Student
+    {
+        return $this->student;
+    }
 
-        if (! $stored) {
-            $this->dispatch('face-capture-rejected');
-            $this->dispatch('swal', icon: 'error', title: __('Data wajah tidak valid. Silakan ulangi.'));
-
+    /**
+     * @param  array<int, array<int, float|int>>  $descriptors
+     */
+    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): void
+    {
+        if (! $this->attemptFaceRegistration($this->student, auth()->user(), $descriptors, $snapshot, $confirmedOwnerId)) {
             return;
         }
 
@@ -116,4 +119,12 @@ new #[Title('Daftarkan Wajah Siswa')] class extends Component {
             </ul>
         </div>
     </div>
+
+    @if ($faceConflict !== null)
+        <x-face-conflict-dialog :conflict="$faceConflict" :snapshot="$this->pendingSnapshot" :student-name="$student->name">
+            <x-ui.button variant="secondary" icon="refresh-outline" class="w-full" :href="route('master-data.students.face', $faceConflict['owner_id'])" wire:navigate>
+                {{ __('Daftarkan ulang wajah :name', ['name' => $faceConflict['name']]) }}
+            </x-ui.button>
+        </x-face-conflict-dialog>
+    @endif
 </div>

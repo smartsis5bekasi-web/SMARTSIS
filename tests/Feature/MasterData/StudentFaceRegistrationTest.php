@@ -114,10 +114,26 @@ test('the admin page refuses a face that belongs to another student', function (
     Livewire::test('pages::master-data.students.face', ['student' => $student])
         ->call('storeFaceDescriptors', adminCapturedDescriptors())
         ->assertNoRedirect()
-        ->assertDispatched('face-capture-rejected')
-        ->assertDispatched('swal', fn (string $name, array $params): bool => str_contains($params['text'] ?? '', 'Pemilik Wajah'));
+        ->assertSet('faceConflict.name', 'Pemilik Wajah')
+        ->assertSee('Pemilik Wajah');
 
     expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('the admin page can move a self-registered face to the student it belongs to', function () {
+    $owner = Student::factory()->create(['face_descriptors' => adminCapturedDescriptors(), 'face_registered_at' => now()]);
+    $student = Student::factory()->create(['face_descriptors' => null]);
+
+    $this->actingAs(adminUser());
+
+    Livewire::test('pages::master-data.students.face', ['student' => $student])
+        ->call('storeFaceDescriptors', adminCapturedDescriptors())
+        ->assertSee(route('master-data.students.face', $owner->id))
+        ->call('confirmFaceConflict')
+        ->assertRedirect(route('master-data.students.show', $student));
+
+    expect($student->fresh()->hasStaffVerifiedFace())->toBeTrue()
+        ->and($owner->fresh()->hasRegisteredFace())->toBeFalse();
 });
 
 test('self-registered faces can be listed for re-verification', function () {

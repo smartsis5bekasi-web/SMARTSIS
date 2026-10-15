@@ -22,6 +22,19 @@ const MODEL_URL = '/models/face-api';
 // friction the student pays for little accuracy.
 const SAMPLES_NEEDED = 1;
 
+// The one sample is the average of a short burst of frames. A single frame
+// carries its own blur and sensor noise, which pulls the template towards the
+// "average face" and makes classmates look alike to the duplicate check and
+// the kiosk; averaging cancels most of that noise out.
+const FRAMES_PER_SAMPLE = 3;
+const FRAME_INTERVAL_MS = 120;
+
+// A frame below either bar is too weak to build a template from: the detector
+// is unsure it even sees a face, or the face is a small blob far from the
+// tablet.
+const MIN_DETECTION_SCORE = 0.7;
+const MIN_FACE_WIDTH_RATIO = 0.2;
+
 const DETECTOR_OPTIONS = new faceapi.TinyFaceDetectorOptions({
     inputSize: 320,
     scoreThreshold: 0.5,
@@ -75,6 +88,49 @@ function loadModels(onProgress) {
     });
 
     return modelsReady;
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Average a burst of descriptors of the face in front of the camera into one
+ * sample, or explain why the frames were not good enough.
+ *
+ * @returns {Promise<{ descriptor: number[] } | { error: string }>}
+ */
+async function captureAveragedDescriptor(video) {
+    const descriptors = [];
+
+    for (let frame = 0; frame < FRAMES_PER_SAMPLE; frame++) {
+        if (frame > 0) {
+            await wait(FRAME_INTERVAL_MS);
+        }
+
+        const result = await faceapi
+            .detectSingleFace(video, DETECTOR_OPTIONS)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (!result) {
+            return { error: 'Wajah tidak terdeteksi. Tahan posisi dan coba lagi dengan pencahayaan yang cukup.' };
+        }
+
+        if (result.detection.box.width < video.videoWidth * MIN_FACE_WIDTH_RATIO) {
+            return { error: 'Wajah terlalu jauh. Dekatkan wajah ke kamera hingga mengisi bingkai.' };
+        }
+
+        if (result.detection.score < MIN_DETECTION_SCORE) {
+            return { error: 'Wajah kurang jelas. Hadapkan wajah lurus ke kamera dengan pencahayaan yang cukup.' };
+        }
+
+        descriptors.push(result.descriptor);
+    }
+
+    const average = Array.from(descriptors[0], (_, index) =>
+        descriptors.reduce((sum, descriptor) => sum + descriptor[index], 0) / descriptors.length,
+    );
+
+    return { descriptor: average };
 }
 
 function stopCamera() {
@@ -245,7 +301,8 @@ window.SmartsisFace = {
 
         detectLoop();
 
-        // The server refused the capture: clear it and bring the camera back.
+        // The server refused the capture (or staff cancelled the look-alike
+        // dialog): clear it and bring the camera back.
         onRejected = async () => {
             if (!isCurrent()) {
                 return;
@@ -272,19 +329,17 @@ window.SmartsisFace = {
             setStatus('Memproses wajah…');
 
             try {
-                const result = await faceapi
-                    .detectSingleFace(video, DETECTOR_OPTIONS)
-                    .withFaceLandmarks()
-                    .withFaceDescriptor();
+                const frameSnapshot = captureSnapshot(video);
+                const result = await captureAveragedDescriptor(video);
 
-                if (!result) {
-                    setStatus('Wajah tidak terdeteksi. Coba lagi dengan pencahayaan yang cukup.', 'error');
+                if (result.error) {
+                    setStatus(result.error, 'error');
 
                     return;
                 }
 
-                samples.push(Array.from(result.descriptor));
-                snapshot ??= captureSnapshot(video);
+                samples.push(result.descriptor);
+                snapshot ??= frameSnapshot;
                 refreshUi();
 
                 if (samples.length < SAMPLES_NEEDED) {
