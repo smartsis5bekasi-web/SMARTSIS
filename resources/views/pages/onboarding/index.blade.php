@@ -49,8 +49,8 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     }
 
     /**
-     * Whether the student may capture their own face here. When off (the
-     * default), faces are registered in person at the kiosk, and the face
+     * Whether the student may capture their own face here (the default).
+     * When off, faces are registered in person at the kiosk, and the face
      * step only tells the student where to go.
      */
     #[Computed]

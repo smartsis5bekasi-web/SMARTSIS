@@ -20,7 +20,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
 
     public bool $ignore_schedule = false;
 
-    public bool $allow_self_face_registration = false;
+    public bool $allow_self_face_registration = true;
 
     public ?int $late_rule_id = null;
 
@@ -224,7 +224,7 @@ new #[Title('Pengaturan Absensi')] class extends Component {
             <div class="flex flex-col">
                 <span class="font-semibold text-gray-700">{{ __('Izinkan Siswa Mendaftarkan Wajah Sendiri') }}</span>
                 <span class="mt-1 text-xs text-gray-500">
-                    {{ __('Mati (disarankan): wajah hanya didaftarkan di sekolah lewat menu Registrasi Wajah di kiosk, didampingi wali kelas atau petugas. Siswa yang belum terdaftar tetap bisa memakai aplikasi, tetapi belum bisa absen dengan wajah.') }}
+                    {{ __('Nyala (bawaan): siswa wajib mendaftarkan wajah saat aktivasi akun, dan siswa yang belum punya data wajah diminta mendaftarkannya sebelum bisa memakai aplikasi. Mati: wajah hanya didaftarkan di sekolah lewat menu Registrasi Wajah di kiosk, didampingi wali kelas atau petugas.') }}
                 </span>
                 @if ($allow_self_face_registration)
                     <span class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700">

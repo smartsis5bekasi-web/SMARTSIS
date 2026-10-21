@@ -49,7 +49,7 @@ class AttendanceSetting extends Model
             'late_after' => '07:30:00',
             'check_out_after' => '15:00:00',
             'ignore_schedule' => false,
-            'allow_self_face_registration' => false,
+            'allow_self_face_registration' => true,
             'pending_alpha_after_days' => 3,
         ]);
     }

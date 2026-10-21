@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 /*
-| Most of this file walks the self-registration flow, so it is switched on
-| here; the tests at the bottom switch it back off (the shipped default) to
-| cover in-person registration.
+| Most of this file walks the self-registration flow (the shipped default),
+| so it is switched on explicitly here; the tests at the bottom switch it
+| off to cover in-person registration.
 */
 beforeEach(function () {
     $this->seed(RolePermissionSeeder::class);
@@ -300,6 +300,25 @@ test('an onboarded siswa without a face template is sent back to register one', 
         ->assertRedirect(route('dashboard'));
 
     $this->get(route('dashboard'))->assertOk();
+});
+
+test('with the shipped default an onboarded siswa without a face is sent back to register one', function () {
+    AttendanceSetting::query()->delete();
+
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'onboarded_at' => now(),
+        'face_descriptors' => null,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertRedirect(route('onboarding'));
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->assertSee('SmartsisFace.start', false);
 });
 
 test('completing onboarding stamps the student and redirects to the dashboard', function () {
