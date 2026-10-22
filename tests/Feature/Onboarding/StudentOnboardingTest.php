@@ -321,6 +321,71 @@ test('with the shipped default an onboarded siswa without a face is sent back to
         ->assertSee('SmartsisFace.start', false);
 });
 
+test('an onboarded siswa without a face can skip it for this session and still use the app', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'onboarded_at' => now(),
+        'face_descriptors' => null,
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->assertSee(__('Lewati, Daftar Nanti'))
+        ->call('deferFaceRegistration')
+        ->assertRedirect(route('dashboard'));
+
+    $this->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee(__('Wajah Anda belum terdaftar'))
+        ->assertSee(__('Daftarkan Wajah Sekarang'));
+
+    $this->get(route('attendance.absensi'))->assertOk();
+
+    // A new login starts a new session, which asks for the face again.
+    $this->flushSession();
+
+    $this->get(route('dashboard'))->assertRedirect(route('onboarding'));
+});
+
+test('a new siswa cannot skip the face step before a capture was refused', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->assertDontSee(__('Lewati, Daftar Nanti'))
+        ->call('deferFaceRegistration')
+        ->assertForbidden();
+});
+
+test('a new siswa whose face is refused as another student\'s can finish onboarding without it', function () {
+    Student::factory()->create(['face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', fakeFaceDescriptors())
+        ->assertSet('step', 2)
+        ->assertSee(__('Lewati, Daftar Nanti'))
+        ->call('deferFaceRegistration')
+        ->assertSet('step', 3)
+        ->call('completeOnboarding')
+        ->assertRedirect(route('dashboard'));
+
+    expect($student->fresh())
+        ->onboarded_at->not->toBeNull()
+        ->hasRegisteredFace()->toBeFalse();
+
+    $this->get(route('dashboard'))->assertOk();
+});
+
 test('completing onboarding stamps the student and redirects to the dashboard', function () {
     $user = userWithRole(UserRole::Siswa);
     $student = Student::factory()->nisnVerified()->create([

@@ -3,6 +3,7 @@
 use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
 use App\Exceptions\DuplicateFaceException;
+use App\Http\Middleware\EnsureStudentIsOnboarded;
 use App\Models\AttendanceSetting;
 use App\Models\Student;
 use Livewire\Attributes\Computed;
@@ -57,6 +58,24 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     public function selfRegistrationAllowed(): bool
     {
         return AttendanceSetting::current()->allow_self_face_registration;
+    }
+
+    /**
+     * Whether the student may leave the face step without a face: once they
+     * have already onboarded (the face is only being asked for again), or
+     * after a capture was refused as another student's face, which only
+     * staff can sort out at the kiosk.
+     */
+    #[Computed]
+    public function canDeferFace(): bool
+    {
+        $student = $this->student;
+
+        return $this->selfRegistrationAllowed
+            && $student !== null
+            && $student->hasVerifiedNisn()
+            && ! $student->hasRegisteredFace()
+            && ($student->hasCompletedOnboarding() || session(EnsureStudentIsOnboarded::FACE_REFUSED, false));
     }
 
     /**
@@ -117,6 +136,9 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         try {
             $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, auth()->user());
         } catch (DuplicateFaceException $exception) {
+            session()->put(EnsureStudentIsOnboarded::FACE_REFUSED, true);
+            unset($this->canDeferFace);
+
             $this->dispatch('face-capture-rejected');
             $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->forStudent());
 
@@ -163,6 +185,26 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     }
 
     /**
+     * Step 2 → app — register the face later. The student is asked again on
+     * their next login; until then they can use the app, just not absen with
+     * their face.
+     */
+    public function deferFaceRegistration(): void
+    {
+        abort_unless($this->canDeferFace, 403);
+
+        session()->put(EnsureStudentIsOnboarded::FACE_DEFERRED, true);
+
+        if (! $this->student->hasCompletedOnboarding()) {
+            $this->step = 3;
+
+            return;
+        }
+
+        $this->redirectRoute('dashboard', navigate: true);
+    }
+
+    /**
      * Step 2 → 3 — leave the retake without capturing anything. Only reachable
      * when a face is already registered; otherwise step 2 is mandatory.
      */
@@ -178,7 +220,8 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
      * Step 3 — student confirms their identity; onboarding is complete.
      * While self-registration is on the face template is mandatory: the
      * classroom kiosk identifies students by face, so a student without one
-     * could never be marked present there. Otherwise the face is registered
+     * could never be marked present there — unless the student deferred it
+     * after their capture was refused. Otherwise the face is registered
      * later, in person, and is not the student's to provide here.
      */
     public function completeOnboarding(): void
@@ -186,7 +229,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         $student = auth()->user()->student;
         abort_unless($student !== null && $student->hasVerifiedNisn(), 403);
 
-        if (! $student->hasRegisteredFace() && $this->selfRegistrationAllowed) {
+        if (! $student->hasRegisteredFace() && $this->selfRegistrationAllowed && ! session(EnsureStudentIsOnboarded::FACE_DEFERRED, false)) {
             $this->step = 2;
             $this->dispatch('swal', icon: 'error', title: __('Daftarkan wajah Anda terlebih dahulu.'));
 
@@ -314,6 +357,13 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
             @elseif ($step === 2)
                 @php($isRetake = (bool) $this->student?->hasRegisteredFace())
                 <div wire:key="face-capture" x-data x-init="window.SmartsisFace.start($el, $wire)" class="flex flex-col">
+                    @if ($this->student?->hasCompletedOnboarding() && ! $isRetake)
+                        <div class="mb-4 flex items-start gap-2 rounded-lg bg-primary-50 p-3 text-sm text-primary-800">
+                            <ion-icon name="scan-outline" class="mt-0.5 shrink-0 text-lg"></ion-icon>
+                            <span>{{ __('Akun Anda belum memiliki data wajah. Daftarkan sekarang agar bisa absen dengan wajah di tablet kelas.') }}</span>
+                        </div>
+                    @endif
+
                     @if ($isRetake)
                         <div class="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                             <ion-icon name="information-circle-outline" class="mt-0.5 shrink-0 text-lg"></ion-icon>
@@ -345,7 +395,20 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
                                 {{ __('Batal') }}
                             </x-ui.button>
                         @endif
+
+                        @if ($this->canDeferFace)
+                            <x-ui.button variant="secondary" icon="time-outline" class="w-full sm:w-auto"
+                                x-on:click="window.SmartsisFace.stop()" wire:click="deferFaceRegistration">
+                                {{ __('Lewati, Daftar Nanti') }}
+                            </x-ui.button>
+                        @endif
                     </div>
+
+                    @if ($this->canDeferFace)
+                        <p class="mt-3 text-center text-xs text-amber-700">
+                            {{ __('Wajah ditolak atau kamera bermasalah? Lewati dulu, lalu minta wali kelas mendaftarkan wajah Anda di tablet kiosk sekolah.') }}
+                        </p>
+                    @endif
 
                     <p class="mt-3 text-center text-xs text-gray-500">
                         {{ __('Cukup satu foto. Wajah ini dipakai untuk absensi cepat di tablet kelas, jadi pastikan wajah terlihat jelas dan pencahayaan cukup.') }}

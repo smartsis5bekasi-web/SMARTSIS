@@ -12,6 +12,7 @@ use App\Enums\WarningStatus;
 use App\Models\AcademicYear;
 use App\Models\Achievement;
 use App\Models\Attendance;
+use App\Models\AttendanceSetting;
 use App\Models\Classroom;
 use App\Models\CounselingRecord;
 use App\Models\ParentGuardian;
@@ -698,7 +699,15 @@ new #[Title('Dashboard')] class extends Component
                 <ion-icon name="scan-outline" class="mt-0.5 shrink-0 text-2xl"></ion-icon>
                 <div class="flex flex-col gap-1 text-sm">
                     <span class="font-semibold">{{ __('Wajah Anda belum terdaftar') }}</span>
-                    <span>{{ __('Anda belum bisa absen dengan wajah. Datangi tablet kiosk sekolah bersama wali kelas atau petugas untuk mendaftarkan wajah.') }}</span>
+                    @if (AttendanceSetting::current()->allow_self_face_registration)
+                        <span>{{ __('Anda belum bisa absen dengan wajah. Daftarkan wajah Anda sekarang, atau minta wali kelas mendaftarkannya di tablet kiosk sekolah.') }}</span>
+                        <a href="{{ route('onboarding') }}" wire:navigate class="mt-1 inline-flex items-center gap-1 font-semibold text-amber-900 underline">
+                            {{ __('Daftarkan Wajah Sekarang') }}
+                            <ion-icon name="arrow-forward-outline"></ion-icon>
+                        </a>
+                    @else
+                        <span>{{ __('Anda belum bisa absen dengan wajah. Datangi tablet kiosk sekolah bersama wali kelas atau petugas untuk mendaftarkan wajah.') }}</span>
+                    @endif
                 </div>
             </div>
         @endunless
