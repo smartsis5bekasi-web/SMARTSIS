@@ -2,6 +2,7 @@
 
 use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
+use App\Exceptions\DuplicateFaceException;
 use App\Models\AttendanceSetting;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
@@ -534,6 +535,35 @@ test('a face already enrolled on another student is refused without naming them'
         ->assertDispatched('swal', fn (string $name, array $params): bool => ! str_contains($params['text'] ?? '', 'Teman Sekelas'));
 
     expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+});
+
+test('a self-captured face that only resembles another student is accepted', function () {
+    $resemblance = fakeFaceDescriptors();
+    $resemblance[0][0] += 0.45;
+    Student::factory()->create(['face_descriptors' => [$resemblance[0]], 'face_registered_at' => now()]);
+
+    $user = userWithRole(UserRole::Siswa);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('storeFaceDescriptors', [fakeFaceDescriptors()[0]])
+        ->assertNotDispatched('face-capture-rejected')
+        ->assertSet('step', 3);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeTrue();
+});
+
+test('staff still review a face that only resembles another student', function () {
+    $resemblance = fakeFaceDescriptors();
+    $resemblance[0][0] += 0.45;
+    Student::factory()->create(['face_descriptors' => [$resemblance[0]], 'face_registered_at' => now()]);
+
+    $student = Student::factory()->create();
+
+    expect(fn () => app(RegisterStudentFace::class)->handle($student, [fakeFaceDescriptors()[0]], null, userWithRole(UserRole::WaliKelas)))
+        ->toThrow(DuplicateFaceException::class);
 });
 
 test('a self-registered face records the student as its source', function () {

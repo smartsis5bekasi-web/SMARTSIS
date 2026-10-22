@@ -42,6 +42,12 @@ class RegisterStudentFace
      * students can genuinely land — siblings, or two look-alikes caught by the
      * same tablet under the same light — so staff may keep both after
      * comparing the photos.
+     *
+     * It is also the only cut-off a student's own capture is refused at.
+     * Phone cameras land a face within {@see self::DUPLICATE_DISTANCE} of
+     * several schoolmates at once, so the wider net refused most honest
+     * students with nobody there to resolve it; the kiosk narrows its lookup
+     * to one class anyway.
      */
     private const SAME_PERSON_DISTANCE = 0.4;
 
@@ -61,7 +67,11 @@ class RegisterStudentFace
         }
 
         $isStaffCapture = $registeredBy !== null && $registeredBy->id !== $student->user_id;
-        $lookAlikes = $this->findLookAlikes($descriptors, $student);
+        $lookAlikes = $this->findLookAlikes(
+            $descriptors,
+            $student,
+            $isStaffCapture ? self::DUPLICATE_DISTANCE : self::SAME_PERSON_DISTANCE,
+        );
         $resolution = null;
 
         if ($lookAlikes !== []) {
@@ -151,13 +161,13 @@ class RegisterStudentFace
     }
 
     /**
-     * Every other student with a stored template close enough to be the same
-     * face, closest first.
+     * Every other student with a stored template closer than `$cutoff`,
+     * closest first.
      *
      * @param  array<int, array<int, float|int>>  $descriptors
      * @return list<array{student: Student, distance: float}>
      */
-    private function findLookAlikes(array $descriptors, Student $student): array
+    private function findLookAlikes(array $descriptors, Student $student, float $cutoff): array
     {
         $lookAlikes = [];
 
@@ -166,7 +176,7 @@ class RegisterStudentFace
             ->whereKeyNot($student->getKey())
             ->select(['id', 'name', 'classroom_id', 'user_id', 'avatar_url', 'face_descriptors', 'face_registered_at', 'face_registered_by'])
             ->lazyById(200)
-            ->each(function (Student $candidate) use ($descriptors, &$lookAlikes): void {
+            ->each(function (Student $candidate) use ($descriptors, $cutoff, &$lookAlikes): void {
                 $closest = INF;
 
                 foreach ($candidate->face_descriptors ?? [] as $stored) {
@@ -175,7 +185,7 @@ class RegisterStudentFace
                     }
                 }
 
-                if ($closest < self::DUPLICATE_DISTANCE) {
+                if ($closest < $cutoff) {
                     $lookAlikes[] = ['student' => $candidate, 'distance' => $closest];
                 }
             });
