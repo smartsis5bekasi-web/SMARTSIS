@@ -265,8 +265,8 @@ new #[Title('Siswa')] class extends Component {
 
         if (isset($row['jenis_kelamin'])) {
             $gender = match (mb_strtolower($row['jenis_kelamin'])) {
-                'l', 'laki-laki' => 'L',
-                'p', 'perempuan' => 'P',
+                'l', 'laki-laki', 'l (laki-laki)' => 'L',
+                'p', 'perempuan', 'p (perempuan)' => 'P',
                 default => null,
             };
 

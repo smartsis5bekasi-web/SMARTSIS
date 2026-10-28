@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -378,6 +379,27 @@ test('importing a valid csv creates students with relations and parents', functi
         ->and($parent->phone)->toBe('081234567890');
 
     expect(Student::where('nis', '2024002')->first()->parents()->count())->toBe(0);
+});
+
+test('siswa import accepts jenis kelamin written as listed on the Referensi sheet', function () {
+    Classroom::factory()->create(['name' => '12.A']);
+
+    $csv = implode("\n", [
+        'nama;nis;email;password;jenis_kelamin;kelas',
+        'Andio Nayaka;242510079;andio@example.test;0083902802;L (Laki-Laki);12.A',
+        'Aiko Valerie;242510006;aiko@example.test;0098877696;P (Perempuan);12.A',
+    ]);
+
+    Livewire::test('pages::master-data.students.index')
+        ->set('importFile', UploadedFile::fake()->createWithContent('siswa.csv', $csv))
+        ->call('import')
+        ->assertSet('importErrors', []);
+
+    $andio = Student::where('nis', '242510079')->first();
+
+    expect($andio->gender)->toBe('L')
+        ->and(Student::where('nis', '242510006')->value('gender'))->toBe('P')
+        ->and(Hash::check('0083902802', $andio->user->password))->toBeTrue();
 });
 
 test('siswa import rejects unknown kelas and duplicate nis, creating nothing', function () {

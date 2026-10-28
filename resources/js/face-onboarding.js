@@ -286,13 +286,28 @@ window.SmartsisFace = {
             }
 
             if (!busy && samples.length < SAMPLES_NEEDED) {
-                const detection = await faceapi.detectSingleFace(video, DETECTOR_OPTIONS);
-                faceVisible = Boolean(detection);
-                setStatus(
-                    faceVisible
-                        ? 'Wajah terdeteksi. Tekan tombol untuk mengambil sampel.'
-                        : 'Posisikan wajah Anda di tengah kamera.',
-                );
+                // A detector that throws (a phone whose GPU backend chokes,
+                // a frame grabbed before the video has a size) must not kill
+                // the loop: an unhandled rejection here used to leave the
+                // capture button disabled for good with no explanation.
+                try {
+                    const detection = await faceapi.detectSingleFace(video, DETECTOR_OPTIONS);
+                    faceVisible = Boolean(detection);
+                    setStatus(
+                        faceVisible
+                            ? 'Wajah terdeteksi. Tekan tombol untuk mengambil sampel.'
+                            : 'Posisikan wajah Anda di tengah kamera.',
+                    );
+                } catch (error) {
+                    console.error('[SmartsisFace]', error);
+                    faceVisible = false;
+                    setStatus('Pendeteksi wajah bermasalah di perangkat ini. Muat ulang halaman atau gunakan perangkat lain.', 'error');
+                }
+
+                if (session !== currentSession) {
+                    return;
+                }
+
                 refreshUi();
             }
 

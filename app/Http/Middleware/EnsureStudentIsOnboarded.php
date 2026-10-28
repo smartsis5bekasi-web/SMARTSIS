@@ -23,9 +23,6 @@ class EnsureStudentIsOnboarded
     /** Session flag: the student chose to register their face later. */
     public const FACE_DEFERRED = 'onboarding.face_deferred';
 
-    /** Session flag: a self-capture was refused as another student's face. */
-    public const FACE_REFUSED = 'onboarding.face_refused';
-
     /**
      * Handle an incoming request.
      *

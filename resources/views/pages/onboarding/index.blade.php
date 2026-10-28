@@ -61,10 +61,11 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
     }
 
     /**
-     * Whether the student may leave the face step without a face: once they
-     * have already onboarded (the face is only being asked for again), or
-     * after a capture was refused as another student's face, which only
-     * staff can sort out at the kiosk.
+     * Whether the student may leave the face step without a face. Always, as
+     * long as none is registered yet: absensi from the student's own phone is
+     * a selfie that needs no face template, so a camera that will not start,
+     * a face the detector never picks up, or a face refused as another
+     * student's must never lock a student — new or not — out of absen.
      */
     #[Computed]
     public function canDeferFace(): bool
@@ -74,8 +75,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         return $this->selfRegistrationAllowed
             && $student !== null
             && $student->hasVerifiedNisn()
-            && ! $student->hasRegisteredFace()
-            && ($student->hasCompletedOnboarding() || session(EnsureStudentIsOnboarded::FACE_REFUSED, false));
+            && ! $student->hasRegisteredFace();
     }
 
     /**
@@ -136,9 +136,6 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         try {
             $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, auth()->user());
         } catch (DuplicateFaceException $exception) {
-            session()->put(EnsureStudentIsOnboarded::FACE_REFUSED, true);
-            unset($this->canDeferFace);
-
             $this->dispatch('face-capture-rejected');
             $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->forStudent());
 
@@ -220,8 +217,8 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
      * Step 3 — student confirms their identity; onboarding is complete.
      * While self-registration is on the face template is mandatory: the
      * classroom kiosk identifies students by face, so a student without one
-     * could never be marked present there — unless the student deferred it
-     * after their capture was refused. Otherwise the face is registered
+     * could never be marked present there — unless the student chose to
+     * register it later ("Lewati, Daftar Nanti"). Otherwise the face is registered
      * later, in person, and is not the student's to provide here.
      */
     public function completeOnboarding(): void
@@ -406,7 +403,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
 
                     @if ($this->canDeferFace)
                         <p class="mt-3 text-center text-xs text-amber-700">
-                            {{ __('Wajah ditolak atau kamera bermasalah? Lewati dulu, lalu minta wali kelas mendaftarkan wajah Anda di tablet kiosk sekolah.') }}
+                            {{ __('Wajah tidak terdeteksi, ditolak, atau kamera bermasalah? Tekan “Lewati, Daftar Nanti” — Anda tetap bisa absen dari HP. Wali kelas dapat mendaftarkan wajah Anda di tablet kiosk sekolah.') }}
                         </p>
                     @endif
 

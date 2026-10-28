@@ -351,13 +351,40 @@ test('an onboarded siswa without a face can skip it for this session and still u
     $this->get(route('dashboard'))->assertRedirect(route('onboarding'));
 });
 
-test('a new siswa cannot skip the face step before a capture was refused', function () {
+test('a new siswa whose camera never captures a face can skip it, finish onboarding and absen', function () {
     $user = userWithRole(UserRole::Siswa);
-    Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
+    $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
 
     $this->actingAs($user);
 
     Livewire::test('pages::onboarding.index')
+        ->assertSet('step', 2)
+        ->assertSee(__('Lewati, Daftar Nanti'))
+        ->call('deferFaceRegistration')
+        ->assertSet('step', 3)
+        ->call('completeOnboarding')
+        ->assertRedirect(route('dashboard'));
+
+    expect($student->fresh())
+        ->onboarded_at->not->toBeNull()
+        ->hasRegisteredFace()->toBeFalse();
+
+    $this->get(route('attendance.absensi'))->assertOk();
+});
+
+test('a siswa who already has a face is not offered the skip', function () {
+    $user = userWithRole(UserRole::Siswa);
+    Student::factory()->nisnVerified()->create([
+        'user_id' => $user->id,
+        'face_descriptors' => fakeFaceDescriptors(),
+        'face_registered_at' => now(),
+    ]);
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::onboarding.index')
+        ->call('retakeFace')
+        ->assertSet('step', 2)
         ->assertDontSee(__('Lewati, Daftar Nanti'))
         ->call('deferFaceRegistration')
         ->assertForbidden();
