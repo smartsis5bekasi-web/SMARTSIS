@@ -270,9 +270,9 @@ test('a near-identical face already verified by staff cannot be kept twice', fun
     expect($student->fresh()->hasRegisteredFace())->toBeFalse();
 });
 
-test('a capture close to two students is never resolvable', function () {
+test('staff can keep a capture close to several look-alikes verified in person', function () {
     $staff = userWithRole(UserRole::GuruPiket);
-    Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), 0.42), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $closest = Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), 0.42), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
     Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), -0.44), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
     $student = Student::factory()->create();
 
@@ -280,7 +280,50 @@ test('a capture close to two students is never resolvable', function () {
         ->test('pages::attendance.face-registration')
         ->call('selectStudent', $student->id)
         ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSet('faceConflict.owner_id', $closest->id)
+        ->assertSet('faceConflict.resolution', FaceConflictResolution::KeepBoth->value)
+        ->call('confirmFaceConflict')
+        ->assertSet('faceConflict', null);
+
+    expect($student->fresh()->hasStaffVerifiedFace())->toBeTrue();
+});
+
+test('staff can move the closest self-registered face when several classmates look alike', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $closestUser = userWithRole(UserRole::Siswa);
+    $closest = Student::factory()->create(['user_id' => $closestUser->id, 'face_descriptors' => lookAlikeOf(kioskFaceSample(7), 0.1), 'face_registered_at' => now(), 'face_registered_by' => $closestUser->id]);
+    $other = Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), -0.45), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSet('faceConflict.owner_id', $closest->id)
+        ->assertSet('faceConflict.resolution', FaceConflictResolution::Transfer->value)
+        ->call('confirmFaceConflict')
+        ->assertSet('faceConflict', null);
+
+    expect($student->fresh()->hasStaffVerifiedFace())->toBeTrue()
+        ->and($closest->fresh()->hasRegisteredFace())->toBeFalse()
+        ->and($other->fresh()->hasRegisteredFace())->toBeTrue();
+});
+
+test('a near-identical staff-verified face blocks the capture even behind a closer self-registered one', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $selfUser = userWithRole(UserRole::Siswa);
+    Student::factory()->create(['user_id' => $selfUser->id, 'face_descriptors' => lookAlikeOf(kioskFaceSample(7), 0.1), 'face_registered_at' => now(), 'face_registered_by' => $selfUser->id]);
+    $verified = Student::factory()->create(['face_descriptors' => lookAlikeOf(kioskFaceSample(7), -0.3), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', kioskFaceSample(7))
+        ->assertSet('faceConflict.owner_id', $verified->id)
         ->assertSet('faceConflict.resolution', null);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
 });
 
 test('cancelling the look-alike dialog brings the camera back', function () {

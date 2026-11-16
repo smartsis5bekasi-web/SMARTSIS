@@ -72,17 +72,20 @@ class RegisterStudentFace
             $student,
             $isStaffCapture ? self::DUPLICATE_DISTANCE : self::SAME_PERSON_DISTANCE,
         );
+        $owner = null;
         $resolution = null;
 
         if ($lookAlikes !== []) {
-            ['student' => $owner, 'distance' => $distance] = $lookAlikes[0];
+            // Staff compare the frame with the closest look-alike's photo, so
+            // more look-alikes do not make it any less resolvable: classmates
+            // under the same light routinely land several within the wider
+            // staff cut-off. A face near-identical to one staff already
+            // verified still wins, because that one can never be kept twice.
+            ['student' => $owner, 'distance' => $distance] = collect($lookAlikes)->first(
+                fn (array $lookAlike): bool => $lookAlike['student']->hasStaffVerifiedFace() && $lookAlike['distance'] < self::SAME_PERSON_DISTANCE,
+            ) ?? $lookAlikes[0];
 
-            // A second look-alike means the capture itself is suspect (a
-            // blurred or badly lit frame sits close to everyone), so it is
-            // never resolvable.
-            $resolution = $isStaffCapture && count($lookAlikes) === 1
-                ? $this->resolutionFor($owner, $distance)
-                : null;
+            $resolution = $isStaffCapture ? $this->resolutionFor($owner, $distance) : null;
 
             if ($resolution === null || $owner->id !== $confirmedOwnerId) {
                 Log::info('Face registration matched another student.', [
@@ -113,10 +116,8 @@ class RegisterStudentFace
             $attributes['onboarded_at'] = $student->onboarded_at ?? now();
         }
 
-        DB::transaction(function () use ($student, $attributes, $resolution, $lookAlikes, $registeredBy): void {
+        DB::transaction(function () use ($student, $attributes, $resolution, $owner, $registeredBy): void {
             if ($resolution === FaceConflictResolution::Transfer) {
-                $owner = $lookAlikes[0]['student'];
-
                 $owner->update([
                     'face_descriptors' => null,
                     'face_registered_at' => null,
