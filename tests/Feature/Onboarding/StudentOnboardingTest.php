@@ -6,6 +6,7 @@ use App\Exceptions\DuplicateFaceException;
 use App\Models\AttendanceSetting;
 use App\Models\Student;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -390,8 +391,8 @@ test('a siswa who already has a face is not offered the skip', function () {
         ->assertForbidden();
 });
 
-test('a new siswa whose face is refused as another student\'s can finish onboarding without it', function () {
-    Student::factory()->create(['face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
+test('a new siswa whose face looks like another student\'s still finishes onboarding with it', function () {
+    $owner = Student::factory()->create(['face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
 
     $user = userWithRole(UserRole::Siswa);
     $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
@@ -400,16 +401,14 @@ test('a new siswa whose face is refused as another student\'s can finish onboard
 
     Livewire::test('pages::onboarding.index')
         ->call('storeFaceDescriptors', fakeFaceDescriptors())
-        ->assertSet('step', 2)
-        ->assertSee(__('Lewati, Daftar Nanti'))
-        ->call('deferFaceRegistration')
         ->assertSet('step', 3)
         ->call('completeOnboarding')
         ->assertRedirect(route('dashboard'));
 
     expect($student->fresh())
         ->onboarded_at->not->toBeNull()
-        ->hasRegisteredFace()->toBeFalse();
+        ->hasRegisteredFace()->toBeTrue()
+        ->and($owner->fresh()->face_descriptors)->toEqual(fakeFaceDescriptors());
 
     $this->get(route('dashboard'))->assertOk();
 });
@@ -547,8 +546,9 @@ test('the face step cannot be reopened before the nisn is verified', function ()
         ->assertStatus(403);
 });
 
-test('a face already enrolled on another student is refused without naming them', function () {
-    Student::factory()->create(['name' => 'Teman Sekelas', 'face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
+test('a self-captured face near-identical to another student is accepted and logged', function () {
+    Log::spy();
+    $owner = Student::factory()->create(['face_descriptors' => fakeFaceDescriptors(), 'face_registered_at' => now()]);
 
     $user = userWithRole(UserRole::Siswa);
     $student = Student::factory()->nisnVerified()->create(['user_id' => $user->id]);
@@ -557,11 +557,14 @@ test('a face already enrolled on another student is refused without naming them'
 
     Livewire::test('pages::onboarding.index')
         ->call('storeFaceDescriptors', fakeFaceDescriptors())
-        ->assertSet('step', 2)
-        ->assertDispatched('face-capture-rejected')
-        ->assertDispatched('swal', fn (string $name, array $params): bool => ! str_contains($params['text'] ?? '', 'Teman Sekelas'));
+        ->assertNotDispatched('face-capture-rejected')
+        ->assertSet('step', 3);
 
-    expect($student->fresh()->hasRegisteredFace())->toBeFalse();
+    expect($student->fresh()->hasRegisteredFace())->toBeTrue();
+
+    Log::shouldHaveReceived('info')->withArgs(
+        fn (string $message, array $context): bool => $message === 'Self-registered face resembles another student.' && $context['owner_id'] === $owner->id,
+    );
 });
 
 test('a self-captured face that only resembles another student is accepted', function () {

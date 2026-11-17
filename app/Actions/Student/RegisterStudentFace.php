@@ -43,11 +43,11 @@ class RegisterStudentFace
      * same tablet under the same light — so staff may keep both after
      * comparing the photos.
      *
-     * It is also the only cut-off a student's own capture is refused at.
-     * Phone cameras land a face within {@see self::DUPLICATE_DISTANCE} of
-     * several schoolmates at once, so the wider net refused most honest
-     * students with nobody there to resolve it; the kiosk narrows its lookup
-     * to one class anyway.
+     * A student's own capture is only logged when it lands this close to
+     * someone else, never refused: schools that rely on self-registration
+     * have no staff to resolve a look-alike, phone cameras put honest
+     * look-alikes this close, and the kiosk refuses to pick between two
+     * students who scan about equally close anyway.
      */
     private const SAME_PERSON_DISTANCE = 0.4;
 
@@ -59,7 +59,7 @@ class RegisterStudentFace
      * @param  FaceConflictResolution|null  $confirmedResolution  how staff chose to resolve it; null takes the first one offered
      * @return bool false when the descriptors are malformed and nothing was stored
      *
-     * @throws DuplicateFaceException when the face is already enrolled on another student and that was not confirmed
+     * @throws DuplicateFaceException when staff capture a face already enrolled on another student and did not confirm it
      */
     public function handle(Student $student, array $descriptors, ?string $snapshot = null, ?User $registeredBy = null, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): bool
     {
@@ -76,7 +76,14 @@ class RegisterStudentFace
         $owner = null;
         $resolution = null;
 
-        if ($lookAlikes !== []) {
+        if ($lookAlikes !== [] && ! $isStaffCapture) {
+            Log::info('Self-registered face resembles another student.', [
+                'student_id' => $student->id,
+                'owner_id' => $lookAlikes[0]['student']->id,
+                'distance' => round($lookAlikes[0]['distance'], 4),
+                'look_alikes' => count($lookAlikes),
+            ]);
+        } elseif ($lookAlikes !== []) {
             // Staff compare the frame with the closest look-alike's photo, so
             // more look-alikes do not make it any less resolvable: classmates
             // under the same light routinely land several within the wider
@@ -86,7 +93,7 @@ class RegisterStudentFace
                 fn (array $lookAlike): bool => $lookAlike['student']->hasStaffVerifiedFace() && $lookAlike['distance'] < self::SAME_PERSON_DISTANCE,
             ) ?? $lookAlikes[0];
 
-            $resolutions = $isStaffCapture ? $this->resolutionsFor($owner, $distance) : [];
+            $resolutions = $this->resolutionsFor($owner, $distance);
             $resolution = $confirmedResolution ?? $resolutions[0] ?? null;
 
             if (! in_array($resolution, $resolutions, true) || $owner->id !== $confirmedOwnerId) {
@@ -95,7 +102,7 @@ class RegisterStudentFace
                     'owner_id' => $owner->id,
                     'distance' => round($distance, 4),
                     'look_alikes' => count($lookAlikes),
-                    'registered_by' => $registeredBy?->id,
+                    'registered_by' => $registeredBy->id,
                     'resolutions' => array_map(fn (FaceConflictResolution $option): string => $option->value, $resolutions),
                 ]);
 

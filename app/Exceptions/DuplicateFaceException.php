@@ -11,8 +11,8 @@ use RuntimeException;
  * let one person check in as two students, and the kiosk could not tell the
  * two records apart anyway.
  *
- * The message names the other student, so it is only for staff screens; a
- * student registering their own face is shown {@see self::forStudent()}.
+ * Only staff captures are refused this way, so the message may name the
+ * other student; a student's own capture is never refused over a look-alike.
  *
  * {@see self::$resolutions} are the ways staff may still go ahead after
  * comparing the two photos, the suggested one ({@see self::$resolution})
@@ -36,13 +36,5 @@ class DuplicateFaceException extends RuntimeException
             'name' => $owner->name,
             'classroom' => $owner->classroom->name ?? __('tanpa kelas'),
         ]));
-    }
-
-    /**
-     * The same refusal without revealing whose account the face is on.
-     */
-    public function forStudent(): string
-    {
-        return __('Wajah ini sudah terdaftar pada akun siswa lain. Hubungi wali kelas atau admin sekolah.');
     }
 }

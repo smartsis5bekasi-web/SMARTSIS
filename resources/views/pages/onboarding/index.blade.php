@@ -2,7 +2,6 @@
 
 use App\Actions\Student\RegisterStudentFace;
 use App\Enums\UserRole;
-use App\Exceptions\DuplicateFaceException;
 use App\Http\Middleware\EnsureStudentIsOnboarded;
 use App\Models\AttendanceSetting;
 use App\Models\Student;
@@ -133,14 +132,7 @@ new #[Layout('layouts::onboarding')] #[Title('Aktivasi Akun Siswa')] class exten
         // unsupervised capture.
         abort_if($student->hasStaffVerifiedFace(), 403);
 
-        try {
-            $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, auth()->user());
-        } catch (DuplicateFaceException $exception) {
-            $this->dispatch('face-capture-rejected');
-            $this->dispatch('swal', icon: 'error', title: __('Wajah sudah terdaftar'), text: $exception->forStudent());
-
-            return;
-        }
+        $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, auth()->user());
 
         if (! $stored) {
             $this->dispatch('face-capture-rejected');
