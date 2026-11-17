@@ -234,6 +234,49 @@ test('staff can move a self-registered face to the student in front of the camer
         ->face_registered_by->toBeNull();
 });
 
+test('staff can keep a self-registered look-alike when the two are different students', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $ownerUser = userWithRole(UserRole::Siswa);
+    $owner = Student::factory()->create(['user_id' => $ownerUser->id, 'face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $ownerUser->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', lookAlikeOf(kioskFaceSample(7), 0.45))
+        ->assertSet('faceConflict.resolution', FaceConflictResolution::Transfer->value)
+        ->assertSee(__('Pindahkan ke :student', ['student' => $student->name]))
+        ->assertSee(__('Orang berbeda, simpan keduanya'))
+        ->call('confirmFaceConflict', FaceConflictResolution::KeepBoth->value)
+        ->assertSet('faceConflict', null)
+        ->assertSet('selectedStudentId', null);
+
+    expect($student->fresh()->hasStaffVerifiedFace())->toBeTrue()
+        ->and($owner->fresh())
+        ->face_descriptors->toEqual(kioskFaceSample(7))
+        ->face_registered_by->toBe($ownerUser->id);
+});
+
+test('a near-identical self-registered face can only be moved, not kept twice', function () {
+    $staff = userWithRole(UserRole::GuruPiket);
+    $ownerUser = userWithRole(UserRole::Siswa);
+    $owner = Student::factory()->create(['user_id' => $ownerUser->id, 'face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $ownerUser->id]);
+    $student = Student::factory()->create();
+
+    Livewire::actingAs($staff)
+        ->test('pages::attendance.face-registration')
+        ->call('selectStudent', $student->id)
+        ->call('storeFaceDescriptors', lookAlikeOf(kioskFaceSample(7), 0.2))
+        ->assertSet('faceConflict.resolutions', [FaceConflictResolution::Transfer->value])
+        ->assertDontSee(__('Orang berbeda, simpan keduanya'))
+        ->call('confirmFaceConflict', FaceConflictResolution::KeepBoth->value)
+        ->assertDispatched('face-capture-rejected')
+        ->assertSet('selectedStudentId', $student->id);
+
+    expect($student->fresh()->hasRegisteredFace())->toBeFalse()
+        ->and($owner->fresh()->hasRegisteredFace())->toBeTrue();
+});
+
 test('staff can keep two look-alike students that were both verified in person', function () {
     $staff = userWithRole(UserRole::GuruPiket);
     $owner = Student::factory()->create(['face_descriptors' => kioskFaceSample(7), 'face_registered_at' => now(), 'face_registered_by' => $staff->id]);

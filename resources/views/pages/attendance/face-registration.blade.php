@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FaceConflictResolution;
 use App\Enums\Permission;
 use App\Livewire\Concerns\ResolvesFaceConflicts;
 use App\Models\Classroom;
@@ -340,7 +341,7 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
     /**
      * @param  array<int, array<int, float|int>>  $descriptors
      */
-    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): void
+    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): void
     {
         $operator = $this->requireOperator();
         $student = $this->selectedStudent;
@@ -351,7 +352,7 @@ new #[Layout('layouts::kiosk')] #[Title('Registrasi Wajah')] class extends Compo
             return;
         }
 
-        if (! $this->attemptFaceRegistration($student, $operator, $descriptors, $snapshot, $confirmedOwnerId)) {
+        if (! $this->attemptFaceRegistration($student, $operator, $descriptors, $snapshot, $confirmedOwnerId, $confirmedResolution)) {
             return;
         }
 

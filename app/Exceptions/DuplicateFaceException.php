@@ -14,16 +14,24 @@ use RuntimeException;
  * The message names the other student, so it is only for staff screens; a
  * student registering their own face is shown {@see self::forStudent()}.
  *
- * {@see self::$resolution} is how staff may still go ahead after comparing the
- * two photos, or null when the capture has to be refused outright.
+ * {@see self::$resolutions} are the ways staff may still go ahead after
+ * comparing the two photos, the suggested one ({@see self::$resolution})
+ * first; empty when the capture has to be refused outright.
  */
 class DuplicateFaceException extends RuntimeException
 {
+    public readonly ?FaceConflictResolution $resolution;
+
+    /**
+     * @param  list<FaceConflictResolution>  $resolutions
+     */
     public function __construct(
         public readonly Student $owner,
         public readonly float $distance = 0.0,
-        public readonly ?FaceConflictResolution $resolution = null,
+        public readonly array $resolutions = [],
     ) {
+        $this->resolution = $resolutions[0] ?? null;
+
         parent::__construct(__('Wajah ini sudah terdaftar atas nama :name (:classroom). Pastikan siswa yang difoto benar, atau perbarui data wajah :name terlebih dahulu.', [
             'name' => $owner->name,
             'classroom' => $owner->classroom->name ?? __('tanpa kelas'),

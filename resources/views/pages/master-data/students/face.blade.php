@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FaceConflictResolution;
 use App\Livewire\Concerns\ResolvesFaceConflicts;
 use App\Models\Student;
 use Livewire\Attributes\Title;
@@ -36,9 +37,9 @@ new #[Title('Daftarkan Wajah Siswa')] class extends Component {
     /**
      * @param  array<int, array<int, float|int>>  $descriptors
      */
-    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): void
+    protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): void
     {
-        if (! $this->attemptFaceRegistration($this->student, auth()->user(), $descriptors, $snapshot, $confirmedOwnerId)) {
+        if (! $this->attemptFaceRegistration($this->student, auth()->user(), $descriptors, $snapshot, $confirmedOwnerId, $confirmedResolution)) {
             return;
         }
 

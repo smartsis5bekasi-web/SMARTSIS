@@ -56,11 +56,12 @@ class RegisterStudentFace
      * @param  string|null  $snapshot  a `data:image/jpeg;base64,…` string
      * @param  User|null  $registeredBy  who captured it; staff other than the student marks the face as verified in person
      * @param  int|null  $confirmedOwnerId  the look-alike student staff already compared photos with and chose to resolve
+     * @param  FaceConflictResolution|null  $confirmedResolution  how staff chose to resolve it; null takes the first one offered
      * @return bool false when the descriptors are malformed and nothing was stored
      *
      * @throws DuplicateFaceException when the face is already enrolled on another student and that was not confirmed
      */
-    public function handle(Student $student, array $descriptors, ?string $snapshot = null, ?User $registeredBy = null, ?int $confirmedOwnerId = null): bool
+    public function handle(Student $student, array $descriptors, ?string $snapshot = null, ?User $registeredBy = null, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): bool
     {
         if (! $this->isValid($descriptors)) {
             return false;
@@ -85,19 +86,20 @@ class RegisterStudentFace
                 fn (array $lookAlike): bool => $lookAlike['student']->hasStaffVerifiedFace() && $lookAlike['distance'] < self::SAME_PERSON_DISTANCE,
             ) ?? $lookAlikes[0];
 
-            $resolution = $isStaffCapture ? $this->resolutionFor($owner, $distance) : null;
+            $resolutions = $isStaffCapture ? $this->resolutionsFor($owner, $distance) : [];
+            $resolution = $confirmedResolution ?? $resolutions[0] ?? null;
 
-            if ($resolution === null || $owner->id !== $confirmedOwnerId) {
+            if (! in_array($resolution, $resolutions, true) || $owner->id !== $confirmedOwnerId) {
                 Log::info('Face registration matched another student.', [
                     'student_id' => $student->id,
                     'owner_id' => $owner->id,
                     'distance' => round($distance, 4),
                     'look_alikes' => count($lookAlikes),
                     'registered_by' => $registeredBy?->id,
-                    'resolution' => $resolution?->value,
+                    'resolutions' => array_map(fn (FaceConflictResolution $option): string => $option->value, $resolutions),
                 ]);
 
-                throw new DuplicateFaceException($owner->load('classroom:id,name'), $distance, $resolution);
+                throw new DuplicateFaceException($owner->load('classroom:id,name'), $distance, $resolutions);
             }
         }
 
@@ -138,15 +140,25 @@ class RegisterStudentFace
     }
 
     /**
-     * How staff may go ahead despite the look-alike, or null when they may not.
+     * How staff may go ahead despite the look-alike, the suggested way first;
+     * empty when they may not.
+     *
+     * A self-registered face can always be moved, since nobody ever checked
+     * it was the owner's. Past {@see self::SAME_PERSON_DISTANCE} the two may
+     * just as well be different students, so staff may keep both instead of
+     * wiping a classmate's honest enrolment.
+     *
+     * @return list<FaceConflictResolution>
      */
-    private function resolutionFor(Student $owner, float $distance): ?FaceConflictResolution
+    private function resolutionsFor(Student $owner, float $distance): array
     {
-        if (! $owner->hasStaffVerifiedFace()) {
-            return FaceConflictResolution::Transfer;
+        $resolutions = $owner->hasStaffVerifiedFace() ? [] : [FaceConflictResolution::Transfer];
+
+        if ($distance >= self::SAME_PERSON_DISTANCE) {
+            $resolutions[] = FaceConflictResolution::KeepBoth;
         }
 
-        return $distance >= self::SAME_PERSON_DISTANCE ? FaceConflictResolution::KeepBoth : null;
+        return $resolutions;
     }
 
     /**

@@ -30,7 +30,7 @@ trait ResolvesFaceConflicts
     /**
      * The other student the held-back capture ran into.
      *
-     * @var array{owner_id: int, name: string, classroom: string|null, avatar: string|null, source: string, distance: float, resolution: string|null}|null
+     * @var array{owner_id: int, name: string, classroom: string|null, avatar: string|null, source: string, distance: float, resolution: string|null, resolutions: list<string>}|null
      */
     #[Locked]
     public ?array $faceConflict = null;
@@ -50,7 +50,7 @@ trait ResolvesFaceConflicts
      *
      * @param  array<int, array<int, float|int>>  $descriptors
      */
-    abstract protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): void;
+    abstract protected function registerFace(array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): void;
 
     /**
      * The held-back frame, shown beside the other student's photo.
@@ -64,25 +64,27 @@ trait ResolvesFaceConflicts
     }
 
     /**
-     * Go ahead with the held-back capture the way the dialog offered.
+     * Go ahead with the held-back capture one of the ways the dialog offered,
+     * the suggested one when none is named.
      */
-    public function confirmFaceConflict(): void
+    public function confirmFaceConflict(?string $resolution = null): void
     {
         $capture = $this->pendingCapture();
         $ownerId = $this->faceConflict['owner_id'] ?? null;
-        $resolvable = ($this->faceConflict['resolution'] ?? null) !== null;
+        $chosen = FaceConflictResolution::tryFrom($resolution ?? $this->faceConflict['resolution'] ?? '');
+        $offered = in_array($chosen?->value, $this->faceConflict['resolutions'] ?? [], true);
         $student = $this->faceCaptureStudent();
 
         $this->forgetPendingCapture();
 
-        if ($capture === null || $ownerId === null || ! $resolvable || $student === null || $student->id !== $capture['student_id']) {
+        if ($capture === null || $ownerId === null || ! $offered || $student === null || $student->id !== $capture['student_id']) {
             $this->dispatch('face-capture-rejected');
             $this->dispatch('swal', icon: 'warning', title: __('Foto sudah kedaluwarsa. Silakan ambil ulang.'));
 
             return;
         }
 
-        $this->registerFace($capture['descriptors'], $capture['snapshot'], $ownerId);
+        $this->registerFace($capture['descriptors'], $capture['snapshot'], $ownerId, $chosen);
     }
 
     /**
@@ -101,10 +103,10 @@ trait ResolvesFaceConflicts
      * @param  array<int, array<int, float|int>>  $descriptors
      * @return bool whether the face was stored
      */
-    protected function attemptFaceRegistration(Student $student, User $operator, array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null): bool
+    protected function attemptFaceRegistration(Student $student, User $operator, array $descriptors, ?string $snapshot, ?int $confirmedOwnerId = null, ?FaceConflictResolution $confirmedResolution = null): bool
     {
         try {
-            $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, $operator, $confirmedOwnerId);
+            $stored = app(RegisterStudentFace::class)->handle($student, $descriptors, $snapshot, $operator, $confirmedOwnerId, $confirmedResolution);
         } catch (DuplicateFaceException $exception) {
             $this->holdConflictingCapture($student, $exception, $descriptors, $snapshot);
 
@@ -157,6 +159,7 @@ trait ResolvesFaceConflicts
                 : __('didaftarkan mandiri'),
             'distance' => round($exception->distance, 2),
             'resolution' => $exception->resolution?->value,
+            'resolutions' => array_map(fn (FaceConflictResolution $option): string => $option->value, $exception->resolutions),
         ];
     }
 

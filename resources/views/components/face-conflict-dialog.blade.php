@@ -8,6 +8,7 @@
 
 @php
     $resolution = App\Enums\FaceConflictResolution::tryFrom($conflict['resolution'] ?? '');
+    $mayKeepBoth = in_array(App\Enums\FaceConflictResolution::KeepBoth->value, $conflict['resolutions'] ?? [], true);
 @endphp
 
 <div class="fixed inset-0 z-50 flex items-center justify-center p-4" x-data x-on:keydown.escape.window="$wire.dismissFaceConflict()">
@@ -47,6 +48,9 @@
         <div class="rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-700">
             @if ($resolution === App\Enums\FaceConflictResolution::Transfer)
                 {{ __('Wajah :name didaftarkan mandiri dan belum pernah diverifikasi petugas. Jika foto :name di atas sebenarnya wajah :student, pindahkan: data wajah :name dihapus dan :name perlu didaftarkan ulang di depan petugas.', ['name' => $conflict['name'], 'student' => $studentName]) }}
+                @if ($mayKeepBoth)
+                    {{ __('Jika keduanya orang yang berbeda, simpan keduanya: data wajah :name tetap ada.', ['name' => $conflict['name']]) }}
+                @endif
             @elseif ($resolution === App\Enums\FaceConflictResolution::KeepBoth)
                 {{ __('Jika sudah dipastikan keduanya orang yang berbeda, simpan keduanya. Kiosk absensi tidak akan menebak bila wajah keduanya terlalu mirip saat dipindai; siswa tersebut tetap bisa absen dari akun masing-masing.') }}
             @else
@@ -57,9 +61,15 @@
 
         <div class="flex flex-col gap-2">
             @if ($resolution === App\Enums\FaceConflictResolution::Transfer)
-                <x-ui.button variant="primary" icon="swap-horizontal-outline" class="w-full" wire:click="confirmFaceConflict" wire:loading.attr="disabled">
+                <x-ui.button variant="primary" icon="swap-horizontal-outline" class="w-full" wire:click="confirmFaceConflict('{{ App\Enums\FaceConflictResolution::Transfer->value }}')" wire:loading.attr="disabled">
                     {{ __('Pindahkan ke :student', ['student' => $studentName]) }}
                 </x-ui.button>
+
+                @if ($mayKeepBoth)
+                    <x-ui.button variant="secondary" icon="checkmark-outline" class="w-full" wire:click="confirmFaceConflict('{{ App\Enums\FaceConflictResolution::KeepBoth->value }}')" wire:loading.attr="disabled">
+                        {{ __('Orang berbeda, simpan keduanya') }}
+                    </x-ui.button>
+                @endif
             @elseif ($resolution === App\Enums\FaceConflictResolution::KeepBoth)
                 <x-ui.button variant="primary" icon="checkmark-outline" class="w-full" wire:click="confirmFaceConflict" wire:loading.attr="disabled">
                     {{ __('Orang berbeda, tetap simpan') }}
